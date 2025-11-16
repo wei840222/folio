@@ -25,16 +25,10 @@ A lightweight file storage server with automatic expiration and web interface.
 ## Usage
 
 ```
-  -h, --help                                      help for folio
-      --http-host string                          HTTP server host (default "0.0.0.0")
-      --http-port int                             HTTP server port (default 8000)
-      --http-max-upload-size int                  Maximum upload size in bytes (default 5242880)
-      --file-web string                           Path to the web directory. This is used to serve the static files for the web interface. (default "./web/dist")
-      --file-uploads string                       Path to save uploaded files. (default "./uploads")
-      --file-garbage-collection-pattern strings   Regular expressions to match files for garbage collection. Files matching these patterns will be deleted. (default [^\._.+,^\.DS_Store$])
+RUST_LOG=info ROCKET_LIMITS='{file="5 MiB"}' cargo run
 ```
 
-The server supports configuration via command line flags, environment variables, and configuration files. Command line flags take precedence over environment variables, which take precedence over configuration files.
+The server supports configuration via environment variables, and configuration files.
 
 ## File Storage
 

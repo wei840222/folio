@@ -1,5 +1,14 @@
 #[macro_use]
 extern crate rocket;
+extern crate log;
+extern crate pretty_env_logger;
+
+use figment::providers::{Env, Format, Serialized, Toml};
+use rocket::fairing::AdHoc;
+use rocket::fs::FileServer;
+
+mod config;
+mod uploads;
 
 #[get("/")]
 fn health() -> &'static str {
@@ -8,8 +17,19 @@ fn health() -> &'static str {
 
 #[launch]
 fn rocket() -> _ {
-    rocket::build()
+    pretty_env_logger::init();
+    let figment = rocket::Config::figment()
+        .merge(Serialized::defaults(config::Folio::default()))
+        .merge(Toml::file("Folio.toml").nested())
+        .merge(Env::prefixed("FOLIO_").global());
+
+    let config: config::Folio = figment.extract().unwrap();
+    log::info!("Using config: {:?}", config);
+
+    rocket::custom(figment)
         .mount("/health", routes![health])
-        .mount("/files", rocket::fs::FileServer::from("./uploads").rank(5))
-        .mount("/", rocket::fs::FileServer::from("./web/dist"))
+        .mount("/uploads", routes![uploads::create_upload])
+        .mount("/files", FileServer::from(config.uploads_path).rank(5))
+        .mount("/", FileServer::from(config.web_path))
+        .attach(AdHoc::config::<config::Folio>())
 }
