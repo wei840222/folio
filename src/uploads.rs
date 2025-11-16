@@ -7,7 +7,7 @@ use rocket::form::{Form, Strict};
 use rocket::fs::TempFile;
 use rocket::serde::{Serialize, json::Json};
 
-use crate::config;
+use super::config;
 
 /// A _probably_ unique upload id.
 pub struct UploadId(String);
@@ -75,7 +75,7 @@ pub async fn create_upload(
         .await?;
 
     Ok(Json(CreateUploadResponse {
-        message: format!("file created successfully"),
+        message: format!("file uploaded successfully"),
         path: format!("/files/{}", id.file_name(ext_ref)),
     }))
 }

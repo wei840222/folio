@@ -1,3 +1,6 @@
+mod config;
+mod uploads;
+
 #[macro_use]
 extern crate rocket;
 extern crate log;
@@ -6,9 +9,6 @@ extern crate pretty_env_logger;
 use figment::providers::{Env, Format, Serialized, Toml};
 use rocket::fairing::AdHoc;
 use rocket::fs::FileServer;
-
-mod config;
-mod uploads;
 
 #[get("/")]
 fn health() -> &'static str {
