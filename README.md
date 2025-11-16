@@ -1,12 +1,12 @@
 # folio
 
-Simple HTTP server to save files.
+A lightweight file storage server with automatic expiration and web interface.
 
 - [Features](#features)
 - [Usage](#usage)
 - [File Storage](#file-storage)
 - [API](#api)
-  - [`POST /upload`](#post-upload)
+  - [`POST /uploads`](#post-uploads)
   - [`POST /files/:path`](#post-filespath)
   - [`HEAD /files/:path`](#head-filespath)
   - [`GET /files/:path`](#get-filespath)
@@ -15,19 +15,22 @@ Simple HTTP server to save files.
 
 ## Features
 
-- **Simple file upload and download**: Upload files via POST/PUT and download via GET
-- **Random filename generation**: `/upload` endpoint generates unique filenames automatically
+- **Random filename generation**: `/uploads` endpoint generates unique 8-character filenames automatically
+- **Custom file paths**: Specify your own file paths using `/files/:path` endpoints
+- **File expiration**: Set expiration time for uploaded files (default: 168h/7 days)
+- **File operations**: Support HEAD, GET, POST, PUT, and DELETE operations
+- **Garbage collection**: Automatic cleanup of files matching specified patterns
+- **Web interface**: Built-in web UI for file management
 
 ## Usage
 
 ```
   -h, --help                                      help for folio
       --http-host string                          HTTP server host (default "0.0.0.0")
-      --http-port int                             HTTP server port (default 8080)
+      --http-port int                             HTTP server port (default 8000)
       --http-max-upload-size int                  Maximum upload size in bytes (default 5242880)
-      --file-root string                          Path to save uploaded files. (default "./uploads")
-      --file-web-root string                      Path to the web root directory. This is used to serve the static files for the web interface. (default "./web/dist")
-      --file-web-upload-path string               Path of the upload api response. (default "./files")
+      --file-web string                           Path to the web directory. This is used to serve the static files for the web interface. (default "./web/dist")
+      --file-uploads string                       Path to save uploaded files. (default "./uploads")
       --file-garbage-collection-pattern strings   Regular expressions to match files for garbage collection. Files matching these patterns will be deleted. (default [^\._.+,^\.DS_Store$])
 ```
 
@@ -35,12 +38,12 @@ The server supports configuration via command line flags, environment variables,
 
 ## File Storage
 
-Files are stored in the filesystem at the location specified by `--file-root` flag (default: `./data/files`).
-The `/upload` endpoint generates unique 8-character IDs for uploaded files, while `/files/:path` endpoints allow you to specify custom paths.
+Files are stored in the filesystem at the location specified by `--file-uploads` flag (default: `./uploads`).
+The `/uploads` endpoint generates unique 8-character IDs for uploaded files, while `/files/:path` endpoints allow you to specify custom paths.
 
 ## API
 
-### `POST /upload`
+### `POST /uploads`
 
 Uploads a new file with an automatically generated filename. The server generates a random 8-character ID and uses the original file extension.
 
@@ -84,7 +87,7 @@ Body:
 
 ```bash
 echo 'Hello, world!' > sample.txt
-curl -X POST -F file=@sample.txt http://localhost:8080/upload?expire=1h
+curl -X POST -F file=@sample.txt http://localhost:8000/uploads?expire=1h
 ```
 
 ```
@@ -129,7 +132,7 @@ Body:
 #### Example
 
 ```bash
-curl -X POST -F file=@sample.txt "http://localhost:8080/files/test/sample.txt"
+curl -X POST -F file=@sample.txt "http://localhost:8000/files/test/sample.txt"
 ```
 
 ```
@@ -167,7 +170,7 @@ Body
 #### Example
 
 ```bash
-curl -I http://localhost:8080/files/foobar.txt
+curl -I http://localhost:8000/files/foobar.txt
 ```
 
 ### `GET /files/:path`
@@ -207,7 +210,7 @@ Content-Type
 #### Example
 
 ```bash
-curl http://localhost:8080/files/sample.txt
+curl http://localhost:8000/files/sample.txt
 ```
 
 ```
@@ -251,7 +254,7 @@ Body:
 #### Example
 
 ```bash
-curl -X PUT -F file=@sample.txt "http://localhost:8080/files/foobar.txt"
+curl -X PUT -F file=@sample.txt "http://localhost:8000/files/foobar.txt"
 ```
 
 ```
@@ -293,7 +296,7 @@ Body:
 #### Example
 
 ```bash
-curl -X DELETE http://localhost:8080/files/foobar.txt
+curl -X DELETE http://localhost:8000/files/foobar.txt
 ```
 
 ```
