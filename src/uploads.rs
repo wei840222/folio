@@ -10,6 +10,37 @@ use rocket::serde::{Serialize, json::Json};
 
 use super::config;
 
+#[derive(Serialize)]
+#[serde(crate = "rocket::serde")]
+pub struct UploadResponse {
+    message: String,
+    path: String,
+}
+
+type UploadResult = Result<Custom<Json<UploadResponse>>, Custom<Json<UploadResponse>>>;
+
+/// Helper to create error response
+fn error_response(status: Status, message: String) -> Custom<Json<UploadResponse>> {
+    Custom(
+        status,
+        Json(UploadResponse {
+            message,
+            path: String::new(),
+        }),
+    )
+}
+
+/// Helper to create success response
+fn success_response(message: &str, path: String) -> Custom<Json<UploadResponse>> {
+    Custom(
+        Status::Created,
+        Json(UploadResponse {
+            message: message.into(),
+            path,
+        }),
+    )
+}
+
 /// A _probably_ unique upload id.
 pub struct UploadId(String);
 
@@ -33,20 +64,6 @@ impl UploadId {
     pub fn file_name(&self, extension: Option<&str>) -> String {
         extension.map_or_else(|| self.0.clone(), |ext| format!("{}.{}", self.0, ext))
     }
-
-    /// Returns the path to the file in `uploads/` corresponding to this ID.
-    pub fn file_path(&self, upload_path: &str, extension: Option<&str>) -> PathBuf {
-        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join(upload_path)
-            .join(self.file_name(extension))
-    }
-}
-
-#[derive(Serialize)]
-#[serde(crate = "rocket::serde")]
-pub struct UploadResponse {
-    message: String,
-    path: String,
 }
 
 #[post("/?<expire>", data = "<file>")]
@@ -54,7 +71,7 @@ pub async fn upload_file(
     config: &State<config::Folio>,
     mut file: Form<Strict<TempFile<'_>>>,
     expire: Option<&str>,
-) -> Result<Custom<Json<UploadResponse>>, Custom<Json<UploadResponse>>> {
+) -> UploadResult {
     log::info!("expire: {:?}", expire.unwrap_or("168h"));
 
     // Determine file extension
@@ -67,35 +84,28 @@ pub async fn upload_file(
     // Generate unique ID, retry if file already exists
     let id = loop {
         let candidate = UploadId::new(8);
-        let path = candidate.file_path(config.uploads_path.as_str(), ext_ref);
+        let file_name = candidate.file_name(ext_ref);
+        let path = config.build_full_upload_path(&PathBuf::from(&file_name));
         if !path.exists() {
             break candidate;
         }
     };
 
-    let path = format!("/files/{}", id.file_name(ext_ref));
+    let file_name = id.file_name(ext_ref);
+    let full_path = config.build_full_upload_path(&PathBuf::from(&file_name));
+    let response_path = format!("/files/{}", file_name);
 
     // Persist file
-    if let Err(e) = file
-        .persist_to(id.file_path(config.uploads_path.as_str(), ext_ref))
-        .await
-    {
-        let error_message = format!("failed to save file: {}", e);
-        log::error!("{}", error_message);
-        return Err(Custom(
+    file.persist_to(&full_path).await.map_err(|e| {
+        log::error!("failed to save file: {}", e);
+        error_response(
             Status::InternalServerError,
-            Json(UploadResponse {
-                message: error_message,
-                path: path,
-            }),
-        ));
-    }
+            format!("failed to save file: {}", e),
+        )
+    })?;
 
-    Ok(Custom(
-        Status::Created,
-        Json(UploadResponse {
-            message: format!("file uploaded successfully"),
-            path: path,
-        }),
+    Ok(success_response(
+        "file uploaded successfully",
+        response_path,
     ))
 }
