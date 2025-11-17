@@ -16,8 +16,6 @@ FROM rust:1.91.1-trixie AS builder
 
 WORKDIR /build
 
-ARG pkg=folio
-
 COPY Cargo.toml Cargo.lock ./
 # Create a dummy src/main.rs to build dependencies
 # This allows caching of dependencies even if source code changes
@@ -25,7 +23,7 @@ RUN set -eux; \
     mkdir src; \
     echo "fn main() {}" > src/main.rs; \
     cargo build --release;\
-    rm -rf target/release/deps/$pkg* src
+    rm -rf target/release/deps/folio* src
 
 COPY . ./
 
@@ -33,7 +31,7 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry \
     --mount=type=cache,target=/usr/local/cargo/git \
     set -eux; \
     cargo build --release; \
-    objcopy --compress-debug-sections target/release/${pkg} ./${pkg}
+    objcopy --compress-debug-sections target/release/folio ./folio
 
 FROM debian:trixie-slim
 
@@ -54,22 +52,22 @@ RUN groupadd -g ${gid} ${group} && \
 
 USER ${user}
 
-WORKDIR /opt/${pkg}
+WORKDIR /opt/folio
 
-COPY --from=builder /build/${pkg} ./${pkg}
-COPY --from=web-builder --chown=${uid}:${gid} /build/dist /opt/${pkg}/web
-RUN mkdir -p /opt/${pkg}/uploads && chown ${uid}:${gid} /opt/${pkg}/uploads
-RUN mkdir -p /opt/${pkg}/tmp && chown ${uid}:${gid} /opt/${pkg}/tmp
+COPY --from=builder /build/folio ./folio
+COPY --from=web-builder --chown=${uid}:${gid} /build/dist /opt/folio/web
+RUN mkdir -p /opt/folio/uploads && chown ${uid}:${gid} /opt/folio/uploads
+RUN mkdir -p /opt/folio/tmp && chown ${uid}:${gid} /opt/folio/tmp
 
 ENV RUST_LOG=info
 ENV ROCKET_CLI_COLOR="true"
 ENV ROCKET_PORT="8080"
 ENV ROCKET_ADDRESS="0.0.0.0"
 ENV ROCKET_LIMITS='{file="5 MiB"}'
-ENV ROCKET_TMP_DIR="/opt/${pkg}/tmp"
-ENV FOLIO_WEB_PATH="/opt/${pkg}/web"
-ENV FOLIO_UPLOADS_PATH="/opt/${pkg}/uploads"
+ENV ROCKET_TMP_DIR="/opt/folio/tmp"
+ENV FOLIO_WEB_PATH="/opt/folio/web"
+ENV FOLIO_UPLOADS_PATH="/opt/folio/uploads"
 
 EXPOSE 8080/tcp
 
-ENTRYPOINT ["./${pkg}"]
+ENTRYPOINT ["./folio"]
