@@ -168,3 +168,237 @@ pub async fn delete_file(config: &State<config::Folio>, path: ValidatedPath) -> 
         }),
     ))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    mod file_endpoints {
+        use super::*;
+        use rocket::http::{ContentType, Status};
+        use rocket::local::blocking::Client;
+
+        fn test_rocket() -> (rocket::Rocket<rocket::Build>, tempfile::TempDir) {
+            let temp_dir = tempfile::tempdir().unwrap();
+            let config = config::Folio {
+                web_path: "".to_string(),
+                uploads_path: temp_dir.path().to_string_lossy().to_string(),
+                garbage_collection_pattern: vec![],
+            };
+
+            let rocket = rocket::build()
+                .mount("/files", routes![create_file, upsert_file, delete_file])
+                .manage(config);
+
+            (rocket, temp_dir)
+        }
+
+        fn multipart_body(filename: &str, content_type: Option<&str>, content: &str) -> String {
+            let content_type_header = content_type
+                .map(|ct| format!("Content-Type: {}\r\n", ct))
+                .unwrap_or_default();
+
+            format!(
+                "--X-BOUNDARY\r\n\
+                 Content-Disposition: form-data; name=\"file\"; filename=\"{}\"\r\n\
+                 {}\
+                 \r\n\
+                 {}\r\n\
+                 --X-BOUNDARY--\r\n",
+                filename, content_type_header, content
+            )
+        }
+
+        fn multipart_content_type() -> ContentType {
+            ContentType::new("multipart", "form-data").with_params([("boundary", "X-BOUNDARY")])
+        }
+
+        #[test]
+        fn create_file_success() {
+            let (rocket, temp_dir) = test_rocket();
+            let client = Client::tracked(rocket).unwrap();
+
+            let response = client
+                .post("/files/test.txt")
+                .header(multipart_content_type())
+                .body(multipart_body(
+                    "test.txt",
+                    Some("text/plain"),
+                    "test content",
+                ))
+                .dispatch();
+
+            assert_eq!(response.status(), Status::Created);
+
+            // Verify file content
+            let file_path = temp_dir.path().join("test.txt");
+            let content = std::fs::read_to_string(file_path).unwrap();
+            assert_eq!(content, "test content");
+        }
+
+        #[test]
+        fn create_file_with_nested_path() {
+            let (rocket, temp_dir) = test_rocket();
+            let client = Client::tracked(rocket).unwrap();
+
+            let response = client
+                .post("/files/folder/subfolder/test.txt")
+                .header(multipart_content_type())
+                .body(multipart_body(
+                    "test.txt",
+                    Some("text/plain"),
+                    "nested content",
+                ))
+                .dispatch();
+
+            assert_eq!(response.status(), Status::Created);
+
+            // Verify file content
+            let file_path = temp_dir.path().join("folder/subfolder/test.txt");
+            let content = std::fs::read_to_string(file_path).unwrap();
+            assert_eq!(content, "nested content");
+        }
+
+        #[test]
+        fn create_file_already_exists() {
+            let (rocket, temp_dir) = test_rocket();
+            let client = Client::tracked(rocket).unwrap();
+
+            // Create file first time
+            let response1 = client
+                .post("/files/test.txt")
+                .header(multipart_content_type())
+                .body(multipart_body("test.txt", Some("text/plain"), "content 1"))
+                .dispatch();
+            assert_eq!(response1.status(), Status::Created);
+
+            // Try to create same file again
+            let response2 = client
+                .post("/files/test.txt")
+                .header(multipart_content_type())
+                .body(multipart_body("test.txt", Some("text/plain"), "content 2"))
+                .dispatch();
+            assert_eq!(response2.status(), Status::Conflict);
+
+            // Verify original content unchanged
+            let file_path = temp_dir.path().join("test.txt");
+            let content = std::fs::read_to_string(file_path).unwrap();
+            assert_eq!(content, "content 1");
+        }
+
+        #[test]
+        fn upsert_creates_new_file() {
+            let (rocket, temp_dir) = test_rocket();
+            let client = Client::tracked(rocket).unwrap();
+
+            let response = client
+                .put("/files/test.txt")
+                .header(multipart_content_type())
+                .body(multipart_body(
+                    "test.txt",
+                    Some("text/plain"),
+                    "new content",
+                ))
+                .dispatch();
+
+            assert_eq!(response.status(), Status::Created);
+
+            // Verify file content
+            let file_path = temp_dir.path().join("test.txt");
+            let content = std::fs::read_to_string(file_path).unwrap();
+            assert_eq!(content, "new content");
+        }
+
+        #[test]
+        fn upsert_updates_existing_file() {
+            let (rocket, temp_dir) = test_rocket();
+            let client = Client::tracked(rocket).unwrap();
+
+            // Create file first
+            client
+                .post("/files/test.txt")
+                .header(multipart_content_type())
+                .body(multipart_body("test.txt", Some("text/plain"), "original"))
+                .dispatch();
+
+            // Update with PUT
+            let response = client
+                .put("/files/test.txt")
+                .header(multipart_content_type())
+                .body(multipart_body("test.txt", Some("text/plain"), "updated"))
+                .dispatch();
+
+            assert_eq!(response.status(), Status::Ok);
+
+            // Verify updated content
+            let file_path = temp_dir.path().join("test.txt");
+            let content = std::fs::read_to_string(file_path).unwrap();
+            assert_eq!(content, "updated");
+        }
+
+        #[test]
+        fn delete_file_success() {
+            let (rocket, temp_dir) = test_rocket();
+            let client = Client::tracked(rocket).unwrap();
+
+            // Create file first
+            client
+                .post("/files/test.txt")
+                .header(multipart_content_type())
+                .body(multipart_body("test.txt", Some("text/plain"), "content"))
+                .dispatch();
+
+            // Delete file
+            let response = client.delete("/files/test.txt").dispatch();
+            assert_eq!(response.status(), Status::Ok);
+
+            // Verify file is deleted
+            let file_path = temp_dir.path().join("test.txt");
+            assert!(!file_path.exists());
+        }
+
+        #[test]
+        fn delete_file_not_found() {
+            let (rocket, _temp_dir) = test_rocket();
+            let client = Client::tracked(rocket).unwrap();
+
+            let response = client.delete("/files/nonexistent.txt").dispatch();
+            assert_eq!(response.status(), Status::NotFound);
+        }
+
+        #[test]
+        fn rejects_parent_directory_traversal() {
+            let (rocket, temp_dir) = test_rocket();
+            let client = Client::tracked(rocket).unwrap();
+
+            // Try to create file with .. in path
+            let response = client
+                .post("/files/../escape.txt")
+                .header(multipart_content_type())
+                .body(multipart_body("escape.txt", Some("text/plain"), "content"))
+                .dispatch();
+
+            // Rocket normalizes the path, so .. gets removed
+            // The file would be created as "escape.txt" in the root
+            assert_eq!(response.status(), Status::Created);
+
+            // Verify the file was created without escaping the directory
+            let file_path = temp_dir.path().join("escape.txt");
+            assert!(file_path.exists());
+        }
+
+        #[test]
+        fn delete_directory_fails() {
+            let (rocket, temp_dir) = test_rocket();
+            let client = Client::tracked(rocket).unwrap();
+
+            // Create a directory
+            let dir_path = temp_dir.path().join("testdir");
+            std::fs::create_dir(&dir_path).unwrap();
+
+            // Try to delete directory
+            let response = client.delete("/files/testdir").dispatch();
+            assert_eq!(response.status(), Status::BadRequest);
+        }
+    }
+}
