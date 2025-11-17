@@ -30,7 +30,10 @@ fn rocket() -> _ {
     rocket::custom(figment)
         .mount("/health", routes![health])
         .mount("/uploads", routes![uploads::upload_file])
-        .mount("/files", routes![files::create_file])
+        .mount(
+            "/files",
+            routes![files::create_file, files::upsert_file, files::delete_file],
+        )
         .mount("/files", FileServer::from(config.uploads_path).rank(5))
         .mount("/", FileServer::from(config.web_path))
         .attach(AdHoc::config::<config::Folio>())

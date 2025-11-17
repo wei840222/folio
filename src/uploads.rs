@@ -5,7 +5,7 @@ use rocket::State;
 use rocket::form::{Form, Strict};
 use rocket::fs::TempFile;
 use rocket::http::Status;
-use rocket::response::status::{Created, Custom};
+use rocket::response::status::Custom;
 use rocket::serde::{Serialize, json::Json};
 
 use super::config;
@@ -54,7 +54,7 @@ pub async fn upload_file(
     config: &State<config::Folio>,
     mut file: Form<Strict<TempFile<'_>>>,
     expire: Option<&str>,
-) -> Result<Created<Json<UploadResponse>>, Custom<Json<UploadResponse>>> {
+) -> Result<Custom<Json<UploadResponse>>, Custom<Json<UploadResponse>>> {
     log::info!("expire: {:?}", expire.unwrap_or("168h"));
 
     // Determine file extension
@@ -91,8 +91,11 @@ pub async fn upload_file(
         ));
     }
 
-    Ok(Created::new(path.clone()).body(Json(UploadResponse {
-        message: format!("file uploaded successfully"),
-        path: path,
-    })))
+    Ok(Custom(
+        Status::Created,
+        Json(UploadResponse {
+            message: format!("file uploaded successfully"),
+            path: path,
+        }),
+    ))
 }
