@@ -12,14 +12,6 @@ use rocket::serde::{Serialize, json::Json};
 
 use super::config;
 
-#[derive(Serialize)]
-#[serde(crate = "rocket::serde")]
-pub struct FileResponse {
-    message: String,
-}
-
-type FileResult = Result<Custom<Json<FileResponse>>, Custom<Json<FileResponse>>>;
-
 /// Validated path that prevents directory traversal
 pub struct ValidatedPath(PathBuf);
 
@@ -41,48 +33,28 @@ impl<'r> FromSegments<'r> for ValidatedPath {
 
         if path.to_string_lossy().contains("..") {
             log::warn!("invalid file path: {}", path.display());
-            Err("path contains '..'")
-        } else {
-            Ok(ValidatedPath(path))
+            return Err("path contains '..'");
         }
+
+        Ok(ValidatedPath(path))
     }
 }
 
-/// Helper to create error response
-fn error_response(status: Status, message: String) -> Custom<Json<FileResponse>> {
-    Custom(status, Json(FileResponse { message }))
+#[derive(Serialize)]
+#[serde(crate = "rocket::serde")]
+pub struct FileResponse {
+    message: String,
 }
 
-/// Helper to create success response
-fn success_response(status: Status, message: &str) -> Custom<Json<FileResponse>> {
-    Custom(
-        status,
-        Json(FileResponse {
-            message: message.into(),
-        }),
-    )
-}
+type FileResult = Result<Custom<Json<FileResponse>>, Custom<Json<FileResponse>>>;
 
 /// Ensure parent directories exist
-fn ensure_parent_dirs(
-    path: &PathBuf,
-    display_path: &PathBuf,
-) -> Result<(), Custom<Json<FileResponse>>> {
+fn ensure_parent_dirs(path: &PathBuf) -> Result<(), Custom<Json<FileResponse>>> {
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent).map_err(|e| {
-            log::error!(
-                "failed to create directories for path {}: {}",
-                display_path.display(),
-                e
-            );
-            error_response(
-                Status::InternalServerError,
-                format!(
-                    "failed to create directories for path {}: {}",
-                    display_path.display(),
-                    e
-                ),
-            )
+            let message = format!("failed to create directories: {}", e);
+            log::error!("{}, path: {}", e, path.to_string_lossy());
+            Custom(Status::InternalServerError, Json(FileResponse { message }))
         })?;
     }
     Ok(())
@@ -98,27 +70,28 @@ pub async fn create_file(
 
     // Check if file already exists
     if full_path.exists() {
-        log::warn!("file already exists: {}", path.display());
-        return Err(error_response(
+        return Err(Custom(
             Status::Conflict,
-            format!("file already exists: {}", path.display()),
+            Json(FileResponse {
+                message: format!("file already exists: {}", path.to_string_lossy()),
+            }),
         ));
     }
 
-    ensure_parent_dirs(&full_path, &path)?;
+    ensure_parent_dirs(&full_path)?;
 
     // Persist file
     file.persist_to(&full_path).await.map_err(|e| {
-        log::error!("failed to save file: {}", e);
-        error_response(
-            Status::InternalServerError,
-            format!("failed to save file: {}", e),
-        )
+        let message = format!("failed to save file: {}", e);
+        log::error!("POST /files error: {}", message);
+        Custom(Status::InternalServerError, Json(FileResponse { message }))
     })?;
 
-    Ok(success_response(
+    Ok(Custom(
         Status::Created,
-        "file created successfully",
+        Json(FileResponse {
+            message: "file created successfully".to_string(),
+        }),
     ))
 }
 
@@ -131,27 +104,30 @@ pub async fn upsert_file(
     let full_path = config.build_full_upload_path(&path);
     let file_exists = full_path.exists();
 
-    ensure_parent_dirs(&full_path, &path)?;
+    ensure_parent_dirs(&full_path)?;
 
     // Persist file (overwrites if exists)
     file.persist_to(&full_path).await.map_err(|e| {
-        log::error!("failed to save file: {}", e);
-        error_response(
-            Status::InternalServerError,
-            format!("failed to save file: {}", e),
-        )
+        let message = format!("failed to save file: {}", e);
+        log::error!("PUT /files error: {}", message);
+        Custom(Status::InternalServerError, Json(FileResponse { message }))
     })?;
 
     if file_exists {
-        log::info!("file updated: {}", path.display());
-        Ok(success_response(Status::Ok, "file updated successfully"))
-    } else {
-        log::info!("file created: {}", path.display());
-        Ok(success_response(
-            Status::Created,
-            "file created successfully",
-        ))
+        return Ok(Custom(
+            Status::Ok,
+            Json(FileResponse {
+                message: "file updated successfully".to_string(),
+            }),
+        ));
     }
+
+    Ok(Custom(
+        Status::Created,
+        Json(FileResponse {
+            message: "file created successfully".to_string(),
+        }),
+    ))
 }
 
 #[delete("/<path..>", rank = 5)]
@@ -160,31 +136,35 @@ pub async fn delete_file(config: &State<config::Folio>, path: ValidatedPath) -> 
 
     // Check if file exists
     if !full_path.exists() {
-        log::warn!("file not found: {}", path.display());
-        return Err(error_response(
+        return Err(Custom(
             Status::NotFound,
-            format!("file not found: {}", path.display()),
+            Json(FileResponse {
+                message: format!("file not found: {}", path.to_string_lossy()),
+            }),
         ));
     }
 
     // Check if it's a file (not a directory)
     if !full_path.is_file() {
-        log::warn!("path is not a file: {}", path.display());
-        return Err(error_response(
+        return Err(Custom(
             Status::BadRequest,
-            format!("path is not a file: {}", path.display()),
+            Json(FileResponse {
+                message: format!("path is not a file: {}", path.to_string_lossy()),
+            }),
         ));
     }
 
     // Delete file
     std::fs::remove_file(&full_path).map_err(|e| {
-        log::error!("failed to delete file: {}", e);
-        error_response(
-            Status::InternalServerError,
-            format!("failed to delete file: {}", e),
-        )
+        let message = format!("failed to delete file: {}", e);
+        log::error!("DELETE /files error: {}", message);
+        Custom(Status::InternalServerError, Json(FileResponse { message }))
     })?;
 
-    log::info!("file deleted: {}", path.display());
-    Ok(success_response(Status::Ok, "file deleted successfully"))
+    Ok(Custom(
+        Status::Ok,
+        Json(FileResponse {
+            message: "file deleted successfully".to_string(),
+        }),
+    ))
 }
