@@ -81,7 +81,7 @@ pub async fn create_file(
     ensure_parent_dirs(&full_path)?;
 
     // Persist file
-    file.persist_to(&full_path).await.map_err(|e| {
+    file.move_copy_to(&full_path).await.map_err(|e| {
         let message = format!("failed to save file: {}", e);
         log::error!("POST /files error: {}", message);
         Custom(Status::InternalServerError, Json(FileResponse { message }))
@@ -107,7 +107,7 @@ pub async fn upsert_file(
     ensure_parent_dirs(&full_path)?;
 
     // Persist file (overwrites if exists)
-    file.persist_to(&full_path).await.map_err(|e| {
+    file.move_copy_to(&full_path).await.map_err(|e| {
         let message = format!("failed to save file: {}", e);
         log::error!("PUT /files error: {}", message);
         Custom(Status::InternalServerError, Json(FileResponse { message }))
