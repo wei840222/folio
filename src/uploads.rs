@@ -72,7 +72,7 @@ pub async fn upload_file(
     let full_path = config.build_full_upload_path(&PathBuf::from(&file_name));
 
     // Persist file
-    file.move_copy_to(&full_path).await.map_err(|e| {
+    file.copy_to(&full_path).await.map_err(|e| {
         let message = format!("failed to save file: {}", e);
         log::error!("POST /uploads error: {}", message);
         Custom(
