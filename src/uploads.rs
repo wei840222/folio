@@ -21,9 +21,9 @@ impl UploadId {
     pub fn new(size: usize) -> UploadId {
         const BASE62: &[u8] = b"0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
 
-        let mut rng = rand::thread_rng();
+        let mut rng = rand::rng();
         let id: String = (0..size)
-            .map(|_| BASE62[rng.gen_range(0..BASE62.len())] as char)
+            .map(|_| BASE62[rng.random_range(0..BASE62.len())] as char)
             .collect();
 
         UploadId(id)
