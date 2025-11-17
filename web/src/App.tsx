@@ -25,8 +25,7 @@ function App() {
       if (!res.ok) {
         throw new Error("上傳失敗");
       }
-      const data = await res.json();
-      setShortUrl(`${window.location.origin}${data.path}`);
+      setShortUrl(`${window.location.origin}${res.headers.get("Location")}`);
     } catch (error) {
       console.error("上傳錯誤:", error);
       alert("檔案上傳失敗，請稍後再試。");

@@ -12,7 +12,11 @@ pub struct Folio {
 impl Folio {
     /// Build full file path for uploads with normalized path
     pub fn build_full_upload_path(&self, relative_path: &PathBuf) -> PathBuf {
-        let base = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(&self.uploads_path);
+        let base = if PathBuf::from(&self.uploads_path).is_absolute() {
+            PathBuf::from(&self.uploads_path)
+        } else {
+            PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(&self.uploads_path)
+        };
 
         // Normalize the relative path to prevent directory traversal
         let normalized = relative_path
@@ -116,12 +120,31 @@ mod tests {
         }
 
         #[test]
-        fn absolute_base_path() {
+        fn relative_path_uses_cargo_manifest_dir() {
             let config = Folio::default();
             let path = config.build_full_upload_path(&PathBuf::from("test.txt"));
 
-            // Path should start with CARGO_MANIFEST_DIR
-            assert!(path.is_absolute() || path.starts_with(env!("CARGO_MANIFEST_DIR")));
+            // Relative uploads_path should be joined with CARGO_MANIFEST_DIR
+            let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+            assert!(path.starts_with(&manifest_dir));
+            assert!(path.to_string_lossy().ends_with("uploads/test.txt"));
+        }
+
+        #[test]
+        fn absolute_path_ignores_cargo_manifest_dir() {
+            let config = Folio {
+                web_path: String::from("./web"),
+                uploads_path: String::from("/tmp/test_uploads"),
+                garbage_collection_pattern: vec![],
+            };
+            let path = config.build_full_upload_path(&PathBuf::from("test.txt"));
+
+            // Absolute uploads_path should be used directly
+            assert_eq!(path, PathBuf::from("/tmp/test_uploads/test.txt"));
+
+            // Should NOT contain CARGO_MANIFEST_DIR
+            let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+            assert!(!path.starts_with(&manifest_dir));
         }
 
         #[test]

@@ -237,6 +237,7 @@ dependencies = [
  "pretty_env_logger",
  "rand",
  "rocket",
+ "tempfile",
 ]
 
 [[package]]

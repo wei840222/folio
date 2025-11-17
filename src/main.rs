@@ -8,7 +8,6 @@ extern crate log;
 extern crate pretty_env_logger;
 
 use figment::providers::{Env, Format, Serialized, Toml};
-use rocket::fairing::AdHoc;
 use rocket::fs::FileServer;
 
 #[get("/")]
@@ -34,7 +33,10 @@ fn rocket() -> _ {
             "/files",
             routes![files::create_file, files::upsert_file, files::delete_file],
         )
-        .mount("/files", FileServer::from(config.uploads_path).rank(5))
-        .mount("/", FileServer::from(config.web_path))
-        .attach(AdHoc::config::<config::Folio>())
+        .mount(
+            "/files",
+            FileServer::from(config.uploads_path.to_string()).rank(5),
+        )
+        .mount("/", FileServer::from(config.web_path.to_string()))
+        .manage(config)
 }
