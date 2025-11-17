@@ -1,10 +1,11 @@
 use std::path::PathBuf;
 
 use rand::Rng;
-
 use rocket::State;
 use rocket::form::{Form, Strict};
 use rocket::fs::TempFile;
+use rocket::http::Status;
+use rocket::response::status::{Created, Custom};
 use rocket::serde::{Serialize, json::Json};
 
 use super::config;
@@ -43,19 +44,20 @@ impl UploadId {
 
 #[derive(Serialize)]
 #[serde(crate = "rocket::serde")]
-pub struct CreateUploadResponse {
+pub struct UploadResponse {
     message: String,
     path: String,
 }
 
 #[post("/?<expire>", data = "<file>")]
-pub async fn create_upload(
+pub async fn upload_file(
     config: &State<config::Folio>,
     mut file: Form<Strict<TempFile<'_>>>,
     expire: Option<&str>,
-) -> Result<Json<CreateUploadResponse>, std::io::Error> {
-    log::info!("Expire: {:?}", expire.unwrap_or("168h"));
+) -> Result<Created<Json<UploadResponse>>, Custom<Json<UploadResponse>>> {
+    log::info!("expire: {:?}", expire.unwrap_or("168h"));
 
+    // Determine file extension
     let extension = file
         .content_type()
         .and_then(|ct| ct.extension())
@@ -71,11 +73,26 @@ pub async fn create_upload(
         }
     };
 
-    file.persist_to(id.file_path(config.uploads_path.as_str(), ext_ref))
-        .await?;
+    let path = format!("/files/{}", id.file_name(ext_ref));
 
-    Ok(Json(CreateUploadResponse {
+    // Persist file
+    if let Err(e) = file
+        .persist_to(id.file_path(config.uploads_path.as_str(), ext_ref))
+        .await
+    {
+        let error_message = format!("failed to save file: {}", e);
+        log::error!("{}", error_message);
+        return Err(Custom(
+            Status::InternalServerError,
+            Json(UploadResponse {
+                message: error_message,
+                path: path,
+            }),
+        ));
+    }
+
+    Ok(Created::new(path.clone()).body(Json(UploadResponse {
         message: format!("file uploaded successfully"),
-        path: format!("/files/{}", id.file_name(ext_ref)),
-    }))
+        path: path,
+    })))
 }

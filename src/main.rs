@@ -1,4 +1,5 @@
 mod config;
+mod files;
 mod uploads;
 
 #[macro_use]
@@ -28,7 +29,8 @@ fn rocket() -> _ {
 
     rocket::custom(figment)
         .mount("/health", routes![health])
-        .mount("/uploads", routes![uploads::create_upload])
+        .mount("/uploads", routes![uploads::upload_file])
+        .mount("/files", routes![files::create_file])
         .mount("/files", FileServer::from(config.uploads_path).rank(5))
         .mount("/", FileServer::from(config.web_path))
         .attach(AdHoc::config::<config::Folio>())
