@@ -17,18 +17,56 @@ A lightweight file storage server with automatic expiration and web interface.
 
 - **Random filename generation**: `/uploads` endpoint generates unique 8-character filenames automatically
 - **Custom file paths**: Specify your own file paths using `/files/:path` endpoints
-- **File expiration**: Set expiration time for uploaded files (default: 168h/7 days)
+- **Directory Traversal Protection**: Secure path normalization prevents accessing files outside the uploads directory
+- **File expiration**: Set expiration time for uploaded files (default: 168h/7 days) **(Not Implemented)**
 - **File operations**: Support HEAD, GET, POST, PUT, and DELETE operations
-- **Garbage collection**: Automatic cleanup of files matching specified patterns
+- **Garbage collection**: Automatic cleanup of files matching specified patterns **(Not Implemented)**
 - **Web interface**: Built-in web UI for file management
 
 ## Usage
 
+### Prerequisites
+
+- [Rust and Cargo](https://rustup.rs/)
+
+### Running the Server
+
+Start the server with default settings:
+
+**Linux/macOS:**
+
+```bash
+RUST_LOG=info cargo run
 ```
+
+**Windows (PowerShell):**
+
+```powershell
+$env:RUST_LOG="info"; cargo run
+```
+
+With custom limits:
+
+**Linux/macOS:**
+
+```bash
 RUST_LOG=info ROCKET_LIMITS='{file="5 MiB"}' cargo run
 ```
 
-The server supports configuration via environment variables, and configuration files.
+**Windows (PowerShell):**
+
+```powershell
+$env:RUST_LOG="info"; $env:ROCKET_LIMITS='{file="5 MiB"}'; cargo run
+```
+
+## Configuration
+
+The server can be configured via `Folio.toml` or environment variables.
+
+| Key            | Environment Variable | Default      | Description                   |
+| -------------- | -------------------- | ------------ | ----------------------------- |
+| `web_path`     | `FOLIO_WEB_PATH`     | `./web/dist` | Path to the static web files. |
+| `uploads_path` | `FOLIO_UPLOADS_PATH` | `./uploads`  | Path to store uploaded files. |
 
 ## File Storage
 
@@ -48,10 +86,10 @@ Content-Type
 
 Parameters:
 
-| Name     | Required? | Type         | Description              | Default |
-| -------- | :-------: | ------------ | ------------------------ | ------- |
-| `file`   |     v     | Form Data    | A content of the file.   |         |
-| `expire` |     x     | Query String | Expire time of the file. | 168h    |
+| Name     | Required? | Type         | Description                                    | Default |
+| -------- | :-------: | ------------ | ---------------------------------------------- | ------- |
+| `file`   |     v     | Form Data    | A content of the file.                         |         |
+| `expire` |     x     | Query String | Expire time of the file **(Not Implemented)**. | 168h    |
 
 #### Response
 
@@ -283,9 +321,10 @@ Body:
 
 ##### On Failure
 
-| StatusCode      | When                 |
-| --------------- | -------------------- |
-| `404 Not Found` | File path not found. |
+| StatusCode        | When                 |
+| ----------------- | -------------------- |
+| `400 Bad Request` | Path is a directory. |
+| `404 Not Found`   | File path not found. |
 
 #### Example
 
