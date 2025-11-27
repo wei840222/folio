@@ -7,6 +7,7 @@ pub struct Folio {
     pub web_path: String,
     pub uploads_path: String,
     pub garbage_collection_pattern: Vec<String>,
+    pub temporal: Temporal,
 }
 
 impl Folio {
@@ -29,7 +30,22 @@ impl Folio {
                 path
             });
 
-        base.join(normalized)
+        let full_path = base.join(normalized);
+
+        // Try to canonicalize to get a clean absolute path
+        // If file doesn't exist yet, try to clean up the base part at least
+        if let Ok(p) = full_path.canonicalize() {
+            return p;
+        }
+
+        // Fallback: manually clean up CurDir (.) components
+        full_path.components().fold(PathBuf::new(), |mut p, c| {
+            match c {
+                Component::CurDir => {}
+                _ => p.push(c),
+            }
+            p
+        })
     }
 }
 
@@ -42,6 +58,25 @@ impl<'r> Default for Folio {
                 String::from(r#"^\._.+"#),
                 String::from(r#"^\.DS_Store$"#),
             ],
+            temporal: Temporal::default(),
+        }
+    }
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(crate = "rocket::serde")]
+pub struct Temporal {
+    pub address: String,
+    pub namespace: String,
+    pub task_queue: String,
+}
+
+impl<'r> Default for Temporal {
+    fn default() -> Temporal {
+        Temporal {
+            address: String::from("localhost:7233"),
+            namespace: String::from("default"),
+            task_queue: String::from("FOLIO:FILES"),
         }
     }
 }
@@ -67,6 +102,7 @@ mod tests {
             let path = config.build_full_upload_path(&PathBuf::from("test.txt"));
 
             assert!(path.to_string_lossy().ends_with("uploads/test.txt"));
+            assert!(!path.to_string_lossy().contains("/./"));
         }
 
         #[test]
@@ -78,6 +114,7 @@ mod tests {
                 path.to_string_lossy()
                     .ends_with("uploads/subfolder/test.txt")
             );
+            assert!(!path.to_string_lossy().contains("/./"));
         }
 
         #[test]
@@ -87,6 +124,7 @@ mod tests {
 
             // Current dir component is ignored, only Normal components remain
             assert!(path.to_string_lossy().ends_with("uploads/test.txt"));
+            assert!(!path.to_string_lossy().contains("/./"));
         }
 
         #[test]
@@ -96,6 +134,7 @@ mod tests {
 
             // Parent dir components are ignored, only Normal components remain
             assert!(path.to_string_lossy().ends_with("uploads/folder/test.txt"));
+            assert!(!path.to_string_lossy().contains("/./"));
         }
 
         #[test]
@@ -113,6 +152,7 @@ mod tests {
                 web_path: String::from("./web"),
                 uploads_path: String::from("./custom_uploads"),
                 garbage_collection_pattern: vec![],
+                temporal: Temporal::default(),
             };
             let path = config.build_full_upload_path(&PathBuf::from("test.txt"));
 
@@ -136,6 +176,7 @@ mod tests {
                 web_path: String::from("./web"),
                 uploads_path: String::from("/tmp/test_uploads"),
                 garbage_collection_pattern: vec![],
+                temporal: Temporal::default(),
             };
             let path = config.build_full_upload_path(&PathBuf::from("test.txt"));
 

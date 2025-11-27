@@ -9,6 +9,14 @@ log = "0.4.28"
 pretty_env_logger = "0.5.0"
 rocket = { version = "0.5.1", features = ["json"] }
 figment = { version = "0.10.19", features = ["env", "toml"] }
+temporalio-common = { git = "https://github.com/temporalio/sdk-core.git" }
+temporalio-sdk = { git = "https://github.com/temporalio/sdk-core.git" }
+temporalio-sdk-core = { git = "https://github.com/temporalio/sdk-core.git" }
+temporalio-client = { git = "https://github.com/temporalio/sdk-core.git" }
+hostname = "0.4.1"
+tokio = "1.48.0"
+anyhow = "1.0.100"
+serde = "1.0.228"
 
 [dev-dependencies]
 tempfile = "3.23.0"

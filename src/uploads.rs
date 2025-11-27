@@ -1,4 +1,6 @@
 use std::path::PathBuf;
+use std::sync::Arc;
+use std::time::Duration;
 
 use rand::Rng;
 use rocket::State;
@@ -7,8 +9,11 @@ use rocket::fs::TempFile;
 use rocket::http::Status;
 use rocket::response::status::{Created, Custom};
 use rocket::serde::{Serialize, json::Json};
+use temporalio_client::{RetryClient, WorkflowClientTrait, WorkflowOptions};
+use temporalio_sdk_core::Client;
 
 use super::config;
+use super::workflow::FileExpirationInput;
 
 /// A _probably_ unique upload id.
 pub struct UploadId(String);
@@ -46,11 +51,10 @@ type UploadResult = Result<Created<Json<UploadResponse>>, Custom<Json<UploadResp
 #[post("/?<expire>", data = "<file>")]
 pub async fn upload_file(
     config: &State<config::Folio>,
+    temporal_client: &State<Option<Arc<RetryClient<Client>>>>,
     mut file: Form<Strict<TempFile<'_>>>,
     expire: Option<&str>,
 ) -> UploadResult {
-    log::info!("expire: {:?}", expire.unwrap_or("168h"));
-
     // Determine file extension
     let extension = file
         .content_type()
@@ -81,11 +85,75 @@ pub async fn upload_file(
         )
     })?;
 
+    // Start Temporal Workflow if client is available
+    if let Some(client) = temporal_client.inner() {
+        let input = FileExpirationInput {
+            path: full_path.clone(),
+            ttl: match expire {
+                Some(s) => parse_duration(s).unwrap_or(Duration::from_secs(168 * 3600)),
+                None => Duration::from_secs(168 * 3600),
+            },
+        };
+
+        let payload = temporalio_common::protos::coresdk::AsJsonPayloadExt::as_json_payload(&input)
+            .map_err(|e| {
+                let message = format!("failed to serialize input: {:?}", e);
+                log::error!("POST /uploads error: {}", message);
+                Custom(
+                    Status::InternalServerError,
+                    Json(UploadResponse { message }),
+                )
+            })?;
+
+        client
+            .start_workflow(
+                vec![payload],
+                config.temporal.task_queue.clone(),
+                file_name.clone(),
+                "file_expiration_workflow".to_string(),
+                None,
+                WorkflowOptions::default(),
+            )
+            .await
+            .map_err(|e| {
+                let message = format!(
+                    "failed to start expiration workflow for {}: {:?}",
+                    file_name, e
+                );
+                log::error!("POST /uploads error: {}", message);
+                Custom(
+                    Status::InternalServerError,
+                    Json(UploadResponse { message }),
+                )
+            })?;
+    }
+
     Ok(
         Created::new(format!("/files/{}", file_name)).body(Json(UploadResponse {
             message: "file uploaded successfully".to_string(),
         })),
     )
+}
+
+fn parse_duration(s: &str) -> Result<Duration, String> {
+    // Simple parser for now: supports 's', 'm', 'h', 'd'
+    // e.g., "10s", "5m", "24h"
+    let len = s.len();
+    if len < 2 {
+        return Err("Invalid duration format".to_string());
+    }
+
+    let unit = &s[len - 1..];
+    let val_str = &s[..len - 1];
+    let val: u64 = val_str.parse().map_err(|_| "Invalid number".to_string())?;
+
+    match unit {
+        "s" => Ok(Duration::from_secs(val)),
+        "m" => Ok(Duration::from_secs(val * 60)),
+        "h" => Ok(Duration::from_secs(val * 3600)),
+        "d" => Ok(Duration::from_secs(val * 86400)),
+        _ => Err("Unknown unit".to_string()),
+    }
 }
 
 #[cfg(test)]
@@ -148,15 +216,13 @@ mod tests {
 
         fn test_rocket() -> (rocket::Rocket<rocket::Build>, tempfile::TempDir) {
             let temp_dir = tempfile::tempdir().unwrap();
-            let config = config::Folio {
-                web_path: "".to_string(),
-                uploads_path: temp_dir.path().to_string_lossy().to_string(),
-                garbage_collection_pattern: vec![],
-            };
+            let mut config = config::Folio::default();
+            config.uploads_path = temp_dir.path().to_string_lossy().to_string();
 
             let rocket = rocket::build()
                 .mount("/uploads", routes![upload_file])
-                .manage(config);
+                .manage(config)
+                .manage(Option::<Arc<RetryClient<temporalio_sdk_core::Client>>>::None);
 
             (rocket, temp_dir)
         }

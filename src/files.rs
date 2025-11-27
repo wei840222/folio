@@ -52,8 +52,8 @@ type FileResult = Result<Custom<Json<FileResponse>>, Custom<Json<FileResponse>>>
 fn ensure_parent_dirs(path: &PathBuf) -> Result<(), Custom<Json<FileResponse>>> {
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent).map_err(|e| {
-            let message = format!("failed to create directories: {}", e);
-            log::error!("{}, path: {}", e, path.to_string_lossy());
+            let message = format!("failed to create directories: {:?}", e);
+            log::error!("{}, path: {}", message, path.to_string_lossy());
             Custom(Status::InternalServerError, Json(FileResponse { message }))
         })?;
     }
@@ -82,7 +82,7 @@ pub async fn create_file(
 
     // Persist file
     file.copy_to(&full_path).await.map_err(|e| {
-        let message = format!("failed to save file: {}", e);
+        let message = format!("failed to save file: {:?}", e);
         log::error!("POST /files error: {}", message);
         Custom(Status::InternalServerError, Json(FileResponse { message }))
     })?;
@@ -108,7 +108,7 @@ pub async fn upsert_file(
 
     // Persist file (overwrites if exists)
     file.copy_to(&full_path).await.map_err(|e| {
-        let message = format!("failed to save file: {}", e);
+        let message = format!("failed to save file: {:?}", e);
         log::error!("PUT /files error: {}", message);
         Custom(Status::InternalServerError, Json(FileResponse { message }))
     })?;
@@ -156,7 +156,7 @@ pub async fn delete_file(config: &State<config::Folio>, path: ValidatedPath) -> 
 
     // Delete file
     std::fs::remove_file(&full_path).map_err(|e| {
-        let message = format!("failed to delete file: {}", e);
+        let message = format!("failed to delete file: {:?}", e);
         log::error!("DELETE /files error: {}", message);
         Custom(Status::InternalServerError, Json(FileResponse { message }))
     })?;
@@ -180,11 +180,8 @@ mod tests {
 
         fn test_rocket() -> (rocket::Rocket<rocket::Build>, tempfile::TempDir) {
             let temp_dir = tempfile::tempdir().unwrap();
-            let config = config::Folio {
-                web_path: "".to_string(),
-                uploads_path: temp_dir.path().to_string_lossy().to_string(),
-                garbage_collection_pattern: vec![],
-            };
+            let mut config = config::Folio::default();
+            config.uploads_path = temp_dir.path().to_string_lossy().to_string();
 
             let rocket = rocket::build()
                 .mount("/files", routes![create_file, upsert_file, delete_file])
