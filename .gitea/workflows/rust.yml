@@ -22,6 +22,7 @@ jobs:
         uses: arduino/setup-protoc@v3.0.0
         with:
           version: "33.1"
+          repo-token: ${{ secrets.GH_PAT }}
       - name: Setup Rust
         uses: actions-rust-lang/setup-rust-toolchain@v1.15.2
         with:
