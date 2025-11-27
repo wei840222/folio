@@ -14,6 +14,10 @@ RUN bun dist
 
 FROM rust:1.91.1-trixie AS builder
 
+RUN set -x && apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+    protobuf-compiler && \
+    rm -rf /var/lib/apt/lists/*
+
 WORKDIR /build
 
 COPY Cargo.toml Cargo.lock ./
