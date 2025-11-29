@@ -32,9 +32,8 @@ pub async fn delete_file_activity(
 }
 
 // Workflow: Wait (handled by start delay) and then delete
-pub async fn file_expiration_workflow(ctx: WfContext) -> WorkflowResult<()> {
-    let payload = ctx.get_args().first().expect("No input provided");
-    let input = FileExpirationInput::from_json_payload(payload)?;
+pub async fn file_expire_workflow(ctx: WfContext) -> WorkflowResult<()> {
+    let input = FileExpirationInput::from_json_payload(ctx.get_args().first().unwrap())?;
 
     if !ctx.is_replaying() {
         log::info!(
@@ -52,7 +51,7 @@ pub async fn file_expiration_workflow(ctx: WfContext) -> WorkflowResult<()> {
     }
 
     let activity_opts = temporalio_sdk::ActivityOptions {
-        activity_type: "delete_file_activity".to_string(),
+        activity_type: "DeleteFileActivity".to_string(),
         input: temporalio_common::protos::coresdk::AsJsonPayloadExt::as_json_payload(&input)?,
         start_to_close_timeout: Some(Duration::from_secs(10)),
         ..Default::default()

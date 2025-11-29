@@ -110,7 +110,7 @@ pub async fn upload_file(
                 vec![payload],
                 config.temporal.task_queue.clone(),
                 file_name.clone(),
-                "file_expiration_workflow".to_string(),
+                "FileExpireWorkflow".to_string(),
                 None,
                 WorkflowOptions::default(),
             )
