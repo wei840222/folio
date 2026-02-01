@@ -97,9 +97,13 @@ async fn rocket() -> _ {
     log::info!("Using config: {:?}", config);
 
     // Initialize Temporal
-    let temporal_client = init_temporal(&config)
-        .await
-        .expect("Failed to connect to Temporal");
+    let temporal_client = match init_temporal(&config).await {
+        Ok(client) => Some(client),
+        Err(e) => {
+            log::error!("Failed to connect to Temporal: {}", e);
+            None
+        }
+    };
 
     rocket::custom(figment)
         .mount("/health", routes![health])
@@ -114,5 +118,5 @@ async fn rocket() -> _ {
         )
         .mount("/", FileServer::from(config.web_path.to_string()))
         .manage(config)
-        .manage(Some(temporal_client))
+        .manage(temporal_client)
 }
