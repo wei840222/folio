@@ -1,0 +1,78 @@
+name: Docker
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - "*.*.*"
+  pull_request:
+    branches:
+      - main
+
+env:
+  REGISTRY: registry-forgejo.home-infra.weii.cloud
+  IMAGE_NAME: ${{ forgejo.repository }}
+
+jobs:
+  Docker Build & Push:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6.0.1
+
+      - name: Configure Docker Buildx
+        uses: docker/setup-buildx-action@v3.12.0
+        with:
+          driver-opts: image=moby/buildkit:latest
+
+      - name: Extract Docker metadata
+        id: meta
+        uses: docker/metadata-action@v5.10.0
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+
+      - name: Local build
+        id: build
+        uses: docker/build-push-action@v6.18.0
+        with:
+          file: ./Dockerfile
+          context: ./
+          load: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=local,src=/buildx-cache,compression=zstd
+          cache-to: type=local,dest=/buildx-cache,compression=zstd,mode=max
+
+      - name: Scan vulnerability
+        uses: aquasecurity/trivy-action@0.33.1
+        with:
+          token-setup-trivy: ${{ secrets.GH_RATE_LIMIT_PAT }}
+          version: v0.68.2
+          scan-type: image
+          image-ref: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${{ steps.build.outputs.digest }}
+          format: table
+          vuln-type: os,library
+          severity: CRITICAL,HIGH,MEDIUM
+          ignore-unfixed: true
+
+      - name: Login to Docker Registry
+        uses: docker/login-action@v3.6.0
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ forgejo.actor }}
+          password: ${{ secrets.PACKAGE_PAT }}
+
+      - name: Build multi-arch & push
+        uses: docker/build-push-action@v6.18.0
+        with:
+          file: ./Dockerfile
+          context: ./
+          platforms: |
+            linux/amd64
+            linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=local,src=/buildx-cache,compression=zstd
+          cache-to: type=local,dest=/buildx-cache,compression=zstd,mode=max
