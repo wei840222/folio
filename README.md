@@ -81,6 +81,16 @@ Configured with `Folio.toml` and/or environment variables.
 
 If allowlists are empty, JWT validity gates access and no extra allowlist filtering is applied.
 
+### Example `.env` (production baseline)
+
+```bash
+FOLIO_CF_ACCESS_ISSUER=https://<team>.cloudflareaccess.com
+FOLIO_CF_ACCESS_AUD=<your-access-audience>
+FOLIO_CF_ACCESS_JWKS_URL=https://<team>.cloudflareaccess.com/cdn-cgi/access/certs
+FOLIO_CF_ACCESS_ALLOWED_EMAILS=alice@example.com,bob@example.com
+FOLIO_CF_ACCESS_ALLOWED_GROUPS=folio-admins,folio-readers
+```
+
 ## API
 
 ### `POST /uploads`
@@ -179,6 +189,21 @@ Example:
 ```bash
 curl -X DELETE "http://localhost:8000/files/docs/sample.txt"
 ```
+
+## Rollout checklist (dev → staging → production)
+
+1. Configure environment variables (`FOLIO_CF_ACCESS_*`) and restart service.
+2. Verify public flow:
+   - `GET /files/<public-file>` returns `200`
+3. Verify private redirect flow:
+   - `GET /files/<private-file>` returns `302` with `Location: /private-files/<private-file>`
+4. Verify auth failures:
+   - no `Cf-Access-Jwt-Assertion` header on `/private-files/...` returns `401`
+   - invalid token returns `401`
+   - valid token but disallowed email/group returns `403`
+5. Verify authorized access:
+   - valid token + allowed policy returns `200`
+6. Check logs for deny audit entries (code/status/path/method) and ensure no token leakage.
 
 ## Notes
 
