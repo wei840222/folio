@@ -1,3 +1,4 @@
+mod auth;
 mod config;
 mod expiry;
 mod files;
@@ -34,6 +35,7 @@ async fn rocket() -> _ {
     expiry_store.clone().spawn_sweeper(Duration::from_secs(60));
 
     let private_index_store = Arc::new(private_index::PrivateIndexStore::new(&config));
+    let access_auth = Arc::new(auth::AccessAuth::from_env());
 
     rocket::custom(figment)
         .mount("/health", routes![health])
@@ -52,4 +54,5 @@ async fn rocket() -> _ {
         .manage(config)
         .manage(expiry_store)
         .manage(private_index_store)
+        .manage(access_auth)
 }

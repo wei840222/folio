@@ -11,6 +11,7 @@ use rocket::response::status::Custom;
 use rocket::response::{Redirect, Responder};
 use rocket::serde::{Serialize, json::Json};
 
+use super::auth::VerifiedIdentity;
 use super::config;
 use super::private_index::PrivateIndexStore;
 
@@ -110,16 +111,46 @@ pub async fn get_file(
 }
 
 #[get("/<path..>", rank = 5)]
-pub async fn get_private_file(path: ValidatedPath) -> Custom<Json<FileResponse>> {
-    Custom(
-        Status::Unauthorized,
-        Json(FileResponse {
-            message: format!(
-                "private file access requires Cloudflare Zero Trust token: {}",
-                path.to_string_lossy()
-            ),
-        }),
-    )
+pub async fn get_private_file(
+    config: &State<config::Folio>,
+    identity: VerifiedIdentity,
+    path: ValidatedPath,
+) -> Result<NamedFile, Custom<Json<FileResponse>>> {
+    let full_path = config.build_full_upload_path(&path);
+    log::info!(
+        "private file access granted: sub={}, email={:?}, groups_count={}, path={}",
+        identity.0.sub,
+        identity.0.email,
+        identity.0.groups.len(),
+        path.to_string_lossy()
+    );
+
+    if !full_path.exists() {
+        return Err(Custom(
+            Status::NotFound,
+            Json(FileResponse {
+                message: format!("file not found: {}", path.to_string_lossy()),
+            }),
+        ));
+    }
+
+    if !full_path.is_file() {
+        return Err(Custom(
+            Status::BadRequest,
+            Json(FileResponse {
+                message: format!("path is not a file: {}", path.to_string_lossy()),
+            }),
+        ));
+    }
+
+    NamedFile::open(full_path).await.map_err(|e| {
+        Custom(
+            Status::InternalServerError,
+            Json(FileResponse {
+                message: format!("failed to open file: {}", e),
+            }),
+        )
+    })
 }
 
 /// Ensure parent directories exist
@@ -258,6 +289,7 @@ mod tests {
             config.uploads_path = temp_dir.path().to_string_lossy().to_string();
 
             let private_index = std::sync::Arc::new(PrivateIndexStore::new(&config));
+            let access_auth = std::sync::Arc::new(crate::auth::AccessAuth::from_env());
 
             let rocket = rocket::build()
                 .mount(
@@ -266,7 +298,8 @@ mod tests {
                 )
                 .mount("/private-files", routes![get_private_file])
                 .manage(config)
-                .manage(private_index);
+                .manage(private_index)
+                .manage(access_auth);
 
             (rocket, temp_dir)
         }
@@ -509,6 +542,18 @@ mod tests {
                 response.headers().get_one("Location").unwrap(),
                 "/private-files/secret.txt"
             );
+        }
+
+        #[test]
+        fn private_files_requires_access_jwt_header() {
+            let (rocket, temp_dir) = test_rocket();
+            let client = Client::tracked(rocket).unwrap();
+
+            let file_path = temp_dir.path().join("secret.txt");
+            std::fs::write(&file_path, "secret-content").unwrap();
+
+            let response = client.get("/private-files/secret.txt").dispatch();
+            assert_eq!(response.status(), Status::Unauthorized);
         }
     }
 }
