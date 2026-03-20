@@ -77,6 +77,7 @@ Configured with `Folio.toml` and/or environment variables.
 | `FOLIO_CF_ACCESS_JWKS_URL` | `${ISSUER}/cdn-cgi/access/certs` | JWK Set URL for signature verification |
 | `FOLIO_CF_ACCESS_ALLOWED_EMAILS` | _(empty)_ | Comma-separated allowed emails |
 | `FOLIO_CF_ACCESS_ALLOWED_GROUPS` | _(empty)_ | Comma-separated allowed groups |
+| `FOLIO_CF_ACCESS_HS256_SECRET` | _(unset)_ | Optional HS256 verifier secret (mainly for local/dev tests) |
 
 If allowlists are empty, JWT validity gates access and no extra allowlist filtering is applied.
 
@@ -130,7 +131,8 @@ Read private file content.
 Response:
 
 - `200 OK` when authorized
-- `401 Unauthorized` on missing/invalid token or unauthorized identity
+- `401 Unauthorized` on missing/invalid token (signature/issuer/audience/expiry)
+- `403 Forbidden` on valid token but denied by email/group allowlist policy
 
 Example:
 

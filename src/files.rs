@@ -280,8 +280,10 @@ mod tests {
 
     mod file_endpoints {
         use super::*;
+        use jsonwebtoken::{Algorithm, EncodingKey, Header, encode};
         use rocket::http::{ContentType, Status};
         use rocket::local::blocking::Client;
+        use std::time::{SystemTime, UNIX_EPOCH};
 
         fn test_rocket() -> (rocket::Rocket<rocket::Build>, tempfile::TempDir) {
             let temp_dir = tempfile::tempdir().unwrap();
@@ -289,7 +291,13 @@ mod tests {
             config.uploads_path = temp_dir.path().to_string_lossy().to_string();
 
             let private_index = std::sync::Arc::new(PrivateIndexStore::new(&config));
-            let access_auth = std::sync::Arc::new(crate::auth::AccessAuth::from_env());
+            let access_auth = std::sync::Arc::new(crate::auth::AccessAuth::from_parts(
+                "https://issuer.example.com",
+                "folio-app",
+                Some("test-secret"),
+                &[],
+                &[],
+            ));
 
             let rocket = rocket::build()
                 .mount(
@@ -322,6 +330,45 @@ mod tests {
 
         fn multipart_content_type() -> ContentType {
             ContentType::new("multipart", "form-data").with_params([("boundary", "X-BOUNDARY")])
+        }
+
+        fn now_ts() -> usize {
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_secs() as usize
+        }
+
+        fn make_hs256_token(
+            secret: &str,
+            sub: &str,
+            email: &str,
+            groups: &[&str],
+            iss: &str,
+            aud: &str,
+            exp_offset_secs: i64,
+        ) -> String {
+            let exp = if exp_offset_secs >= 0 {
+                now_ts() + exp_offset_secs as usize
+            } else {
+                now_ts().saturating_sub((-exp_offset_secs) as usize)
+            };
+
+            let claims = rocket::serde::json::json!({
+                "sub": sub,
+                "email": email,
+                "groups": groups,
+                "iss": iss,
+                "aud": aud,
+                "exp": exp,
+            });
+
+            encode(
+                &Header::new(Algorithm::HS256),
+                &claims,
+                &EncodingKey::from_secret(secret.as_bytes()),
+            )
+            .unwrap()
         }
 
         #[test]
@@ -554,6 +601,101 @@ mod tests {
 
             let response = client.get("/private-files/secret.txt").dispatch();
             assert_eq!(response.status(), Status::Unauthorized);
+        }
+
+        #[test]
+        fn private_files_with_valid_hs256_jwt_returns_200() {
+            let temp_dir = tempfile::tempdir().unwrap();
+            let mut config = config::Folio::default();
+            config.uploads_path = temp_dir.path().to_string_lossy().to_string();
+
+            let private_index = std::sync::Arc::new(PrivateIndexStore::new(&config));
+            let access_auth = std::sync::Arc::new(crate::auth::AccessAuth::from_parts(
+                "https://issuer.example.com",
+                "folio-app",
+                Some("test-secret"),
+                &[],
+                &[],
+            ));
+
+            let rocket = rocket::build()
+                .mount(
+                    "/files",
+                    routes![get_file, create_file, upsert_file, delete_file],
+                )
+                .mount("/private-files", routes![get_private_file])
+                .manage(config)
+                .manage(private_index)
+                .manage(access_auth);
+
+            let client = Client::tracked(rocket).unwrap();
+            let file_path = temp_dir.path().join("secret.txt");
+            std::fs::write(&file_path, "secret-content").unwrap();
+
+            let token = make_hs256_token(
+                "test-secret",
+                "user-1",
+                "allowed@example.com",
+                &["team-a"],
+                "https://issuer.example.com",
+                "folio-app",
+                3600,
+            );
+
+            let response = client
+                .get("/private-files/secret.txt")
+                .header(rocket::http::Header::new("Cf-Access-Jwt-Assertion", token))
+                .dispatch();
+
+            assert_eq!(response.status(), Status::Ok);
+            assert_eq!(response.into_string().unwrap(), "secret-content");
+        }
+
+        #[test]
+        fn private_files_with_disallowed_email_returns_403() {
+            let temp_dir = tempfile::tempdir().unwrap();
+            let mut config = config::Folio::default();
+            config.uploads_path = temp_dir.path().to_string_lossy().to_string();
+
+            let private_index = std::sync::Arc::new(PrivateIndexStore::new(&config));
+            let access_auth = std::sync::Arc::new(crate::auth::AccessAuth::from_parts(
+                "https://issuer.example.com",
+                "folio-app",
+                Some("test-secret"),
+                &["only@example.com"],
+                &[],
+            ));
+
+            let rocket = rocket::build()
+                .mount(
+                    "/files",
+                    routes![get_file, create_file, upsert_file, delete_file],
+                )
+                .mount("/private-files", routes![get_private_file])
+                .manage(config)
+                .manage(private_index)
+                .manage(access_auth);
+
+            let client = Client::tracked(rocket).unwrap();
+            let file_path = temp_dir.path().join("secret.txt");
+            std::fs::write(&file_path, "secret-content").unwrap();
+
+            let token = make_hs256_token(
+                "test-secret",
+                "user-1",
+                "blocked@example.com",
+                &["team-a"],
+                "https://issuer.example.com",
+                "folio-app",
+                3600,
+            );
+
+            let response = client
+                .get("/private-files/secret.txt")
+                .header(rocket::http::Header::new("Cf-Access-Jwt-Assertion", token))
+                .dispatch();
+
+            assert_eq!(response.status(), Status::Forbidden);
         }
     }
 }
