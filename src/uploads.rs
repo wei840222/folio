@@ -1,5 +1,4 @@
 use std::path::PathBuf;
-use std::sync::Arc;
 use std::time::Duration;
 
 use rand::Rng;
@@ -9,11 +8,9 @@ use rocket::fs::TempFile;
 use rocket::http::Status;
 use rocket::response::status::{Created, Custom};
 use rocket::serde::{Serialize, json::Json};
-use temporalio_client::{RetryClient, WorkflowClientTrait, WorkflowOptions};
-use temporalio_sdk_core::Client;
 
 use super::config;
-use super::workflow::FileExpirationInput;
+use super::expiry::ExpiryStore;
 
 /// A _probably_ unique upload id.
 pub struct UploadId(String);
@@ -51,7 +48,7 @@ type UploadResult = Result<Created<Json<UploadResponse>>, Custom<Json<UploadResp
 #[post("/?<expire>", data = "<file>")]
 pub async fn upload_file(
     config: &State<config::Folio>,
-    temporal_client: &State<Option<Arc<RetryClient<Client>>>>,
+    expiry_store: &State<std::sync::Arc<ExpiryStore>>,
     mut file: Form<Strict<TempFile<'_>>>,
     expire: Option<&str>,
 ) -> UploadResult {
@@ -85,48 +82,19 @@ pub async fn upload_file(
         )
     })?;
 
-    // Start Temporal Workflow if client is available
-    if let Some(client) = temporal_client.inner() {
-        let input = FileExpirationInput {
-            path: full_path.clone(),
-            ttl: match expire {
-                Some(s) => parse_duration(s).unwrap_or(Duration::from_secs(168 * 3600)),
-                None => Duration::from_secs(168 * 3600),
-            },
-        };
+    let ttl = match expire {
+        Some(s) => parse_duration(s).unwrap_or(Duration::from_secs(168 * 3600)),
+        None => Duration::from_secs(168 * 3600),
+    };
 
-        let payload = temporalio_common::protos::coresdk::AsJsonPayloadExt::as_json_payload(&input)
-            .map_err(|e| {
-                let message = format!("failed to serialize input: {:?}", e);
-                log::error!("POST /uploads error: {}", message);
-                Custom(
-                    Status::InternalServerError,
-                    Json(UploadResponse { message }),
-                )
-            })?;
-
-        client
-            .start_workflow(
-                vec![payload],
-                config.temporal.task_queue.clone(),
-                file_name.clone(),
-                "FileExpireWorkflow".to_string(),
-                None,
-                WorkflowOptions::default(),
-            )
-            .await
-            .map_err(|e| {
-                let message = format!(
-                    "failed to start expiration workflow for {}: {:?}",
-                    file_name, e
-                );
-                log::error!("POST /uploads error: {}", message);
-                Custom(
-                    Status::InternalServerError,
-                    Json(UploadResponse { message }),
-                )
-            })?;
-    }
+    expiry_store.schedule(&full_path, ttl).map_err(|e| {
+        let message = format!("failed to schedule expiration for {}: {}", file_name, e);
+        log::error!("POST /uploads error: {}", message);
+        Custom(
+            Status::InternalServerError,
+            Json(UploadResponse { message }),
+        )
+    })?;
 
     Ok(
         Created::new(format!("/files/{}", file_name)).body(Json(UploadResponse {
@@ -219,10 +187,12 @@ mod tests {
             let mut config = config::Folio::default();
             config.uploads_path = temp_dir.path().to_string_lossy().to_string();
 
+            let expiry_store = std::sync::Arc::new(ExpiryStore::new(&config));
+
             let rocket = rocket::build()
                 .mount("/uploads", routes![upload_file])
                 .manage(config)
-                .manage(Option::<Arc<RetryClient<temporalio_sdk_core::Client>>>::None);
+                .manage(expiry_store);
 
             (rocket, temp_dir)
         }

@@ -7,7 +7,6 @@ pub struct Folio {
     pub web_path: String,
     pub uploads_path: String,
     pub garbage_collection_pattern: Vec<String>,
-    pub temporal: Temporal,
 }
 
 impl Folio {
@@ -58,25 +57,6 @@ impl<'r> Default for Folio {
                 String::from(r#"^\._.+"#),
                 String::from(r#"^\.DS_Store$"#),
             ],
-            temporal: Temporal::default(),
-        }
-    }
-}
-
-#[derive(Debug, Deserialize, Serialize)]
-#[serde(crate = "rocket::serde")]
-pub struct Temporal {
-    pub address: String,
-    pub namespace: String,
-    pub task_queue: String,
-}
-
-impl<'r> Default for Temporal {
-    fn default() -> Temporal {
-        Temporal {
-            address: String::from("localhost:7233"),
-            namespace: String::from("default"),
-            task_queue: String::from("FOLIO:FILES"),
         }
     }
 }
@@ -152,7 +132,6 @@ mod tests {
                 web_path: String::from("./web"),
                 uploads_path: String::from("./custom_uploads"),
                 garbage_collection_pattern: vec![],
-                temporal: Temporal::default(),
             };
             let path = config.build_full_upload_path(&PathBuf::from("test.txt"));
 
@@ -176,7 +155,6 @@ mod tests {
                 web_path: String::from("./web"),
                 uploads_path: String::from("/tmp/test_uploads"),
                 garbage_collection_pattern: vec![],
-                temporal: Temporal::default(),
             };
             let path = config.build_full_upload_path(&PathBuf::from("test.txt"));
 
