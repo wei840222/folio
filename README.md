@@ -211,3 +211,9 @@ curl -X DELETE "http://localhost:8000/files/docs/sample.txt"
   - `uploads/.expiry-index.json`
   - `uploads/.private-files.json`
 - `garbage_collection_pattern` exists in config but GC cleanup is not implemented.
+
+## Related docs
+
+- Wiki Home: <https://forgejo.home-infra.weii.cloud/home-infra/folio.wiki/wiki/Home>
+- Wiki Security Model: <https://forgejo.home-infra.weii.cloud/home-infra/folio.wiki/wiki/Security-Model>
+- Wiki Roadmap: <https://forgejo.home-infra.weii.cloud/home-infra/folio.wiki/wiki/Roadmap>
