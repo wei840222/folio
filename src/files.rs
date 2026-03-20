@@ -3,14 +3,16 @@ use std::path::PathBuf;
 
 use rocket::State;
 use rocket::form::{Form, Strict};
-use rocket::fs::TempFile;
+use rocket::fs::{NamedFile, TempFile};
 use rocket::http::Status;
 use rocket::http::uri::Segments;
 use rocket::request::FromSegments;
 use rocket::response::status::Custom;
+use rocket::response::{Redirect, Responder};
 use rocket::serde::{Serialize, json::Json};
 
 use super::config;
+use super::private_index::PrivateIndexStore;
 
 /// Validated path that prevents directory traversal
 pub struct ValidatedPath(PathBuf);
@@ -47,6 +49,78 @@ pub struct FileResponse {
 }
 
 type FileResult = Result<Custom<Json<FileResponse>>, Custom<Json<FileResponse>>>;
+
+#[derive(Responder)]
+pub enum FileGetResponse {
+    Redirect(Redirect),
+    File(NamedFile),
+}
+
+#[get("/<path..>", rank = 5)]
+pub async fn get_file(
+    config: &State<config::Folio>,
+    private_index: &State<std::sync::Arc<PrivateIndexStore>>,
+    path: ValidatedPath,
+) -> Result<FileGetResponse, Custom<Json<FileResponse>>> {
+    let is_private = private_index.is_private(&path).map_err(|e| {
+        Custom(
+            Status::InternalServerError,
+            Json(FileResponse {
+                message: format!("failed to read private index: {}", e),
+            }),
+        )
+    })?;
+
+    if is_private {
+        return Ok(FileGetResponse::Redirect(Redirect::found(format!(
+            "/private-files/{}",
+            path.to_string_lossy()
+        ))));
+    }
+
+    let full_path = config.build_full_upload_path(&path);
+    if !full_path.exists() {
+        return Err(Custom(
+            Status::NotFound,
+            Json(FileResponse {
+                message: format!("file not found: {}", path.to_string_lossy()),
+            }),
+        ));
+    }
+
+    if !full_path.is_file() {
+        return Err(Custom(
+            Status::BadRequest,
+            Json(FileResponse {
+                message: format!("path is not a file: {}", path.to_string_lossy()),
+            }),
+        ));
+    }
+
+    let file = NamedFile::open(full_path).await.map_err(|e| {
+        Custom(
+            Status::InternalServerError,
+            Json(FileResponse {
+                message: format!("failed to open file: {}", e),
+            }),
+        )
+    })?;
+
+    Ok(FileGetResponse::File(file))
+}
+
+#[get("/<path..>", rank = 5)]
+pub async fn get_private_file(path: ValidatedPath) -> Custom<Json<FileResponse>> {
+    Custom(
+        Status::Unauthorized,
+        Json(FileResponse {
+            message: format!(
+                "private file access requires Cloudflare Zero Trust token: {}",
+                path.to_string_lossy()
+            ),
+        }),
+    )
+}
 
 /// Ensure parent directories exist
 fn ensure_parent_dirs(path: &PathBuf) -> Result<(), Custom<Json<FileResponse>>> {
@@ -183,9 +257,16 @@ mod tests {
             let mut config = config::Folio::default();
             config.uploads_path = temp_dir.path().to_string_lossy().to_string();
 
+            let private_index = std::sync::Arc::new(PrivateIndexStore::new(&config));
+
             let rocket = rocket::build()
-                .mount("/files", routes![create_file, upsert_file, delete_file])
-                .manage(config);
+                .mount(
+                    "/files",
+                    routes![get_file, create_file, upsert_file, delete_file],
+                )
+                .mount("/private-files", routes![get_private_file])
+                .manage(config)
+                .manage(private_index);
 
             (rocket, temp_dir)
         }
@@ -396,6 +477,38 @@ mod tests {
             // Try to delete directory
             let response = client.delete("/files/testdir").dispatch();
             assert_eq!(response.status(), Status::BadRequest);
+        }
+
+        #[test]
+        fn get_public_file_success() {
+            let (rocket, temp_dir) = test_rocket();
+            let client = Client::tracked(rocket).unwrap();
+
+            let file_path = temp_dir.path().join("public.txt");
+            std::fs::write(&file_path, "public-content").unwrap();
+
+            let response = client.get("/files/public.txt").dispatch();
+            assert_eq!(response.status(), Status::Ok);
+            assert_eq!(response.into_string().unwrap(), "public-content");
+        }
+
+        #[test]
+        fn get_private_file_redirects_to_private_prefix() {
+            let (rocket, temp_dir) = test_rocket();
+            let client = Client::tracked(rocket).unwrap();
+
+            let file_path = temp_dir.path().join("secret.txt");
+            std::fs::write(&file_path, "secret-content").unwrap();
+
+            let index_path = temp_dir.path().join(".private-files.json");
+            std::fs::write(&index_path, r#"{"files":["secret.txt"]}"#).unwrap();
+
+            let response = client.get("/files/secret.txt").dispatch();
+            assert_eq!(response.status(), Status::Found);
+            assert_eq!(
+                response.headers().get_one("Location").unwrap(),
+                "/private-files/secret.txt"
+            );
         }
     }
 }

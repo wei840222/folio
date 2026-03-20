@@ -1,6 +1,7 @@
 mod config;
 mod expiry;
 mod files;
+mod private_index;
 mod uploads;
 
 use figment::providers::{Env, Format, Serialized, Toml};
@@ -32,18 +33,23 @@ async fn rocket() -> _ {
     let expiry_store = Arc::new(expiry::ExpiryStore::new(&config));
     expiry_store.clone().spawn_sweeper(Duration::from_secs(60));
 
+    let private_index_store = Arc::new(private_index::PrivateIndexStore::new(&config));
+
     rocket::custom(figment)
         .mount("/health", routes![health])
         .mount("/uploads", routes![uploads::upload_file])
         .mount(
             "/files",
-            routes![files::create_file, files::upsert_file, files::delete_file],
+            routes![
+                files::get_file,
+                files::create_file,
+                files::upsert_file,
+                files::delete_file
+            ],
         )
-        .mount(
-            "/files",
-            FileServer::from(config.uploads_path.to_string()).rank(5),
-        )
+        .mount("/private-files", routes![files::get_private_file])
         .mount("/", FileServer::from(config.web_path.to_string()))
         .manage(config)
         .manage(expiry_store)
+        .manage(private_index_store)
 }
