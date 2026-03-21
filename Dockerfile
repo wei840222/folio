@@ -10,7 +10,7 @@ COPY ./web/package.json ./web/bun.lock ./
 RUN bun install --frozen-lockfile
 
 COPY ./web/ ./
-RUN bun dist
+RUN bun run build
 
 FROM rust:1.91.1-trixie AS builder
 
@@ -59,7 +59,7 @@ USER ${user}
 WORKDIR /opt/folio
 
 COPY --from=builder /build/folio ./folio
-COPY --from=web-builder --chown=${uid}:${gid} /build/dist /opt/folio/web
+COPY --from=web-builder --chown=${uid}:${gid} /build/build /opt/folio/web
 RUN mkdir -p /opt/folio/uploads && chown ${uid}:${gid} /opt/folio/uploads
 RUN mkdir -p /opt/folio/tmp && chown ${uid}:${gid} /opt/folio/tmp
 
