@@ -367,44 +367,7 @@ mod tests {
     use jsonwebtoken::{EncodingKey, Header, encode};
     use std::time::{SystemTime, UNIX_EPOCH};
 
-    fn now_ts() -> usize {
-        SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .as_secs() as usize
-    }
-
-    fn make_hs256_token(
-        secret: &str,
-        sub: &str,
-        email: Option<&str>,
-        groups: &[&str],
-        iss: &str,
-        aud: &str,
-        exp_offset_secs: i64,
-    ) -> String {
-        let exp = if exp_offset_secs >= 0 {
-            now_ts() + exp_offset_secs as usize
-        } else {
-            now_ts().saturating_sub((-exp_offset_secs) as usize)
-        };
-
-        let claims = AccessClaims {
-            sub: sub.to_string(),
-            email: email.map(|s| s.to_string()),
-            groups: Some(groups.iter().map(|s| s.to_string()).collect()),
-            exp: Some(exp),
-            iss: Some(iss.to_string()),
-            aud: Some(aud.to_string()),
-        };
-
-        encode(
-            &Header::new(Algorithm::HS256),
-            &claims,
-            &EncodingKey::from_secret(secret.as_bytes()),
-        )
-        .unwrap()
-    }
+    use crate::test_utils::make_hs256_token;
 
     #[test]
     fn verify_hs256_success_allowed_email_and_group() {

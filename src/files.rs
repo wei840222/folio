@@ -332,44 +332,7 @@ mod tests {
             ContentType::new("multipart", "form-data").with_params([("boundary", "X-BOUNDARY")])
         }
 
-        fn now_ts() -> usize {
-            SystemTime::now()
-                .duration_since(UNIX_EPOCH)
-                .unwrap()
-                .as_secs() as usize
-        }
-
-        fn make_hs256_token(
-            secret: &str,
-            sub: &str,
-            email: &str,
-            groups: &[&str],
-            iss: &str,
-            aud: &str,
-            exp_offset_secs: i64,
-        ) -> String {
-            let exp = if exp_offset_secs >= 0 {
-                now_ts() + exp_offset_secs as usize
-            } else {
-                now_ts().saturating_sub((-exp_offset_secs) as usize)
-            };
-
-            let claims = rocket::serde::json::json!({
-                "sub": sub,
-                "email": email,
-                "groups": groups,
-                "iss": iss,
-                "aud": aud,
-                "exp": exp,
-            });
-
-            encode(
-                &Header::new(Algorithm::HS256),
-                &claims,
-                &EncodingKey::from_secret(secret.as_bytes()),
-            )
-            .unwrap()
-        }
+        use crate::test_utils::make_hs256_token;
 
         #[test]
         fn create_file_success() {
@@ -635,7 +598,7 @@ mod tests {
             let token = make_hs256_token(
                 "test-secret",
                 "user-1",
-                "allowed@example.com",
+                Some("allowed@example.com"),
                 &["team-a"],
                 "https://issuer.example.com",
                 "folio-app",
@@ -683,7 +646,7 @@ mod tests {
             let token = make_hs256_token(
                 "test-secret",
                 "user-1",
-                "blocked@example.com",
+                Some("blocked@example.com"),
                 &["team-a"],
                 "https://issuer.example.com",
                 "folio-app",
