@@ -3,6 +3,8 @@ mod config;
 mod expiry;
 mod files;
 mod private_index;
+#[cfg(test)]
+mod test_utils;
 mod uploads;
 
 use figment::providers::{Env, Format, Serialized, Toml};
