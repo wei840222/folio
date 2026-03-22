@@ -15,7 +15,9 @@ impl Folio {
         let base = if PathBuf::from(&self.uploads_path).is_absolute() {
             PathBuf::from(&self.uploads_path)
         } else {
-            PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(&self.uploads_path)
+            std::env::current_dir()
+                .unwrap_or_else(|_| PathBuf::from("."))
+                .join(&self.uploads_path)
         };
 
         // Normalize the relative path to prevent directory traversal
@@ -139,18 +141,18 @@ mod tests {
         }
 
         #[test]
-        fn relative_path_uses_cargo_manifest_dir() {
+        fn relative_path_uses_current_dir() {
             let config = Folio::default();
             let path = config.build_full_upload_path(&PathBuf::from("test.txt"));
 
-            // Relative uploads_path should be joined with CARGO_MANIFEST_DIR
-            let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-            assert!(path.starts_with(&manifest_dir));
+            // Relative uploads_path should be joined with current_dir
+            let current_dir = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+            assert!(path.starts_with(&current_dir));
             assert!(path.to_string_lossy().ends_with("uploads/test.txt"));
         }
 
         #[test]
-        fn absolute_path_ignores_cargo_manifest_dir() {
+        fn absolute_path_ignores_current_dir() {
             let config = Folio {
                 web_path: String::from("./web"),
                 uploads_path: String::from("/tmp/test_uploads"),
@@ -161,9 +163,9 @@ mod tests {
             // Absolute uploads_path should be used directly
             assert_eq!(path, PathBuf::from("/tmp/test_uploads/test.txt"));
 
-            // Should NOT contain CARGO_MANIFEST_DIR
-            let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-            assert!(!path.starts_with(&manifest_dir));
+            // Should NOT contain current_dir
+            let current_dir = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+            assert!(!path.starts_with(&current_dir) || !path.to_string_lossy().contains("test_uploads"));
         }
 
         #[test]
@@ -177,8 +179,8 @@ mod tests {
             assert!(path.to_string_lossy().contains("uploads"));
 
             // Path should not escape to parent directories
-            let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-            assert!(path.starts_with(&manifest_dir) || path.starts_with("uploads"));
+            let current_dir = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+            assert!(path.starts_with(&current_dir) || path.starts_with("uploads"));
         }
 
         #[test]
@@ -205,9 +207,9 @@ mod tests {
                 );
 
                 // Should still be within project directory
-                let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+                let current_dir = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
                 assert!(
-                    path.starts_with(&manifest_dir)
+                    path.starts_with(&current_dir)
                         || path.components().any(|c| c.as_os_str() == "uploads"),
                     "Path {} escaped uploads directory",
                     path_str
