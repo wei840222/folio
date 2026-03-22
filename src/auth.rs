@@ -364,7 +364,9 @@ fn split_csv_env(key: &str) -> HashSet<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[allow(unused_imports)]
     use jsonwebtoken::{EncodingKey, Header, encode};
+    #[allow(unused_imports)]
     use std::time::{SystemTime, UNIX_EPOCH};
 
     use crate::test_utils::make_hs256_token;
