@@ -280,12 +280,8 @@ mod tests {
 
     mod file_endpoints {
         use super::*;
-        #[allow(unused_imports)]
-        use jsonwebtoken::{Algorithm, EncodingKey, Header, encode};
         use rocket::http::{ContentType, Status};
         use rocket::local::blocking::Client;
-        #[allow(unused_imports)]
-        use std::time::{SystemTime, UNIX_EPOCH};
 
         fn test_rocket() -> (rocket::Rocket<rocket::Build>, tempfile::TempDir) {
             let temp_dir = tempfile::tempdir().unwrap();
