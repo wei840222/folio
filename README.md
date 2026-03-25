@@ -169,7 +169,7 @@ curl -X POST \
   --form 'file=@sample.txt;type=text/plain' \
   "http://localhost:8000/uploads?expire=1h" -i
 
-# Without Content-Type (may result in no extension if filename inference fails)
+# Alternative: using -F (shorter syntax, same result)
 curl -X POST -F "file=@sample.txt;type=text/plain" \
   "http://localhost:8000/uploads?expire=1h" -i
 ```
