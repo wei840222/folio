@@ -28,8 +28,6 @@ pub struct AccessAuth {
     issuer: String,
     audience: String,
     verify_mode: VerifyMode,
-    allowed_emails: HashSet<String>,
-    allowed_groups: HashSet<String>,
     jwks_cache: Mutex<Option<(JwkSet, Instant)>>,
 }
 
@@ -102,15 +100,10 @@ impl AccessAuth {
             VerifyMode::Rs256Jwks { jwks_url }
         };
 
-        let allowed_emails = split_csv_env("FOLIO_CF_ACCESS_ALLOWED_EMAILS");
-        let allowed_groups = split_csv_env("FOLIO_CF_ACCESS_ALLOWED_GROUPS");
-
         Self {
             issuer,
             audience,
             verify_mode,
-            allowed_emails,
-            allowed_groups,
             jwks_cache: Mutex::new(None),
         }
     }
@@ -138,8 +131,8 @@ impl AccessAuth {
         issuer: &str,
         audience: &str,
         hs256_secret: Option<&str>,
-        allowed_emails: &[&str],
-        allowed_groups: &[&str],
+        _allowed_emails: &[&str],
+        _allowed_groups: &[&str],
     ) -> Self {
         let verify_mode = if let Some(secret) = hs256_secret {
             VerifyMode::Hs256 {
@@ -155,8 +148,6 @@ impl AccessAuth {
             issuer: issuer.to_string(),
             audience: audience.to_string(),
             verify_mode,
-            allowed_emails: allowed_emails.iter().map(|s| s.to_string()).collect(),
-            allowed_groups: allowed_groups.iter().map(|s| s.to_string()).collect(),
             jwks_cache: Mutex::new(None),
         }
     }
@@ -176,28 +167,6 @@ impl AccessAuth {
             email: claims.email,
             groups: claims.groups.unwrap_or_default(),
         };
-
-        if !self.allowed_emails.is_empty() {
-            let email = identity.email.clone().unwrap_or_default();
-            if !self.allowed_emails.contains(email.as_str()) {
-                return Err(AccessAuthError::forbidden(
-                    "email_not_allowed",
-                    "email is not authorized",
-                ));
-            }
-        }
-
-        if !self.allowed_groups.is_empty()
-            && !identity
-                .groups
-                .iter()
-                .any(|group| self.allowed_groups.contains(group))
-        {
-            return Err(AccessAuthError::forbidden(
-                "group_not_allowed",
-                "group is not authorized",
-            ));
-        }
 
         Ok(identity)
     }
@@ -515,57 +484,5 @@ mod tests {
         let err = auth.verify_and_authorize(&token).unwrap_err();
         assert_eq!(err.status(), Status::Unauthorized);
         assert_eq!(err.code(), "jwt_expired");
-    }
-
-    #[test]
-    fn verify_email_not_allowed_returns_403() {
-        let secret = "test-secret";
-        let auth = AccessAuth::from_parts(
-            "https://issuer.example.com",
-            "folio-app",
-            Some(secret),
-            &["allowed@example.com"],
-            &[],
-        );
-
-        let token = make_hs256_token(
-            secret,
-            "user-1",
-            Some("blocked@example.com"),
-            &[],
-            "https://issuer.example.com",
-            "folio-app",
-            3600,
-        );
-
-        let err = auth.verify_and_authorize(&token).unwrap_err();
-        assert_eq!(err.status(), Status::Forbidden);
-        assert_eq!(err.code(), "email_not_allowed");
-    }
-
-    #[test]
-    fn verify_group_not_allowed_returns_403() {
-        let secret = "test-secret";
-        let auth = AccessAuth::from_parts(
-            "https://issuer.example.com",
-            "folio-app",
-            Some(secret),
-            &[],
-            &["team-a"],
-        );
-
-        let token = make_hs256_token(
-            secret,
-            "user-1",
-            Some("u@example.com"),
-            &["team-b"],
-            "https://issuer.example.com",
-            "folio-app",
-            3600,
-        );
-
-        let err = auth.verify_and_authorize(&token).unwrap_err();
-        assert_eq!(err.status(), Status::Forbidden);
-        assert_eq!(err.code(), "group_not_allowed");
     }
 }
