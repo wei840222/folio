@@ -74,3 +74,11 @@ ALWAYS format the upload confirmation as follows:
 
 - **JWT Protection**: Private files are enforced by Cloudflare Access. Users will be prompted to authenticate when accessing the link.
 - **Content-Type**: Missing `type` in `curl` may result in files having no extension.
+
+## Installation
+
+To add this skill to your AI assistant:
+
+1.  Download the `SKILL.md` file from: [https://raw.githubusercontent.com/wei840222/folio/refs/heads/main/SKILL.md](https://raw.githubusercontent.com/wei840222/folio/refs/heads/main/SKILL.md)
+2.  Place it in your agent's skills directory (e.g., `./skills/folio/SKILL.md`).
+3.  Ensure the agent has access to `curl` in its environment.
