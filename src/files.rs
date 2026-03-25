@@ -319,6 +319,7 @@ mod tests {
         use super::*;
         use rocket::http::{ContentType, Status};
         use rocket::local::blocking::Client;
+        use std::sync::Arc;
 
         fn test_rocket() -> (rocket::Rocket<rocket::Build>, tempfile::TempDir) {
             let temp_dir = tempfile::tempdir().unwrap();
@@ -326,13 +327,11 @@ mod tests {
             config.uploads_path = temp_dir.path().to_string_lossy().to_string();
             config.data_path = temp_dir.path().to_string_lossy().to_string();
 
-            let private_index = std::sync::Arc::new(PrivateIndexStore::new(&config));
-            let access_auth = std::sync::Arc::new(crate::auth::AccessAuth::from_parts(
+            let private_index = Arc::new(PrivateIndexStore::new(&config));
+            let access_auth = Arc::new(crate::auth::AccessAuth::from_parts(
                 "https://issuer.example.com",
                 "folio-app",
                 Some("test-secret"),
-                &[],
-                &[],
             ));
 
             let rocket = rocket::build()
@@ -609,15 +608,13 @@ mod tests {
             config.uploads_path = temp_dir.path().to_string_lossy().to_string();
             config.data_path = temp_dir.path().to_string_lossy().to_string();
 
-            let private_index = std::sync::Arc::new(PrivateIndexStore::new(&config));
+            let private_index = Arc::new(PrivateIndexStore::new(&config));
             private_index.mark_private(&PathBuf::from("secret.txt"), vec!["allowed@example.com".to_string()]).unwrap();
 
-            let access_auth = std::sync::Arc::new(crate::auth::AccessAuth::from_parts(
+            let access_auth = Arc::new(crate::auth::AccessAuth::from_parts(
                 "https://issuer.example.com",
                 "folio-app",
                 Some("test-secret"),
-                &[],
-                &[],
             ));
 
             let rocket = rocket::build()
@@ -660,15 +657,13 @@ mod tests {
             config.uploads_path = temp_dir.path().to_string_lossy().to_string();
             config.data_path = temp_dir.path().to_string_lossy().to_string();
 
-            let private_index = std::sync::Arc::new(PrivateIndexStore::new(&config));
+            let private_index = Arc::new(PrivateIndexStore::new(&config));
             private_index.mark_private(&PathBuf::from("secret.txt"), vec!["only@example.com".to_string()]).unwrap();
 
-            let access_auth = std::sync::Arc::new(crate::auth::AccessAuth::from_parts(
+            let access_auth = Arc::new(crate::auth::AccessAuth::from_parts(
                 "https://issuer.example.com",
                 "folio-app",
                 Some("test-secret"),
-                &[],
-                &[],
             ));
 
             let rocket = rocket::build()

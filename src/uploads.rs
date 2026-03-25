@@ -63,9 +63,17 @@ pub async fn upload_file(
     // Determine file extension
     let extension = {
         let ct_ext = form.file.content_type().and_then(|ct| ct.extension());
-        let nm_ext = form.file.name().and_then(|nm| PathBuf::from(nm).extension().map(|os| os.to_string_lossy().to_string()));
+        let nm_ext = form.file.raw_name().and_then(|nm| {
+            PathBuf::from(nm.as_str().unwrap_or("").to_string())
+                .extension()
+                .map(|os| os.to_string_lossy().to_string())
+        });
 
-        log::info!("Upload extension check: content-type-ext={:?}, filename-ext={:?}", ct_ext, nm_ext);
+        log::info!(
+            "Upload extension check: content-type-ext={:?}, filename-ext={:?}",
+            ct_ext,
+            nm_ext
+        );
 
         match (ct_ext, nm_ext) {
             // Priority: if filename has an extension, use it, especially if content-type is generic 'bin'

@@ -118,8 +118,6 @@ impl AccessAuth {
         issuer: &str,
         audience: &str,
         hs256_secret: Option<&str>,
-        _allowed_emails: &[&str],
-        _allowed_groups: &[&str],
     ) -> Self {
         let verify_mode = if let Some(secret) = hs256_secret {
             VerifyMode::Hs256 {
@@ -332,14 +330,12 @@ mod tests {
     use crate::test_utils::make_hs256_token;
 
     #[test]
-    fn verify_hs256_success_allowed_email_and_group() {
+    fn verify_hs256_success() {
         let secret = "test-secret";
         let auth = AccessAuth::from_parts(
             "https://issuer.example.com",
             "folio-app",
             Some(secret),
-            &["allowed@example.com"],
-            &["team-a"],
         );
 
         let token = make_hs256_token(
@@ -362,8 +358,6 @@ mod tests {
             "https://issuer.example.com",
             "folio-app",
             Some("secret-a"),
-            &[],
-            &[],
         );
 
         let token = make_hs256_token(
@@ -388,8 +382,6 @@ mod tests {
             "https://issuer.example.com",
             "folio-app",
             Some(secret),
-            &[],
-            &[],
         );
 
         let token = make_hs256_token(
@@ -414,8 +406,6 @@ mod tests {
             "https://issuer.example.com",
             "folio-app",
             Some(secret),
-            &[],
-            &[],
         );
 
         let token = make_hs256_token(
@@ -440,8 +430,6 @@ mod tests {
             "https://issuer.example.com",
             "folio-app",
             Some(secret),
-            &[],
-            &[],
         );
 
         let token = make_hs256_token(
