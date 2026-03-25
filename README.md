@@ -20,7 +20,7 @@ A lightweight file storage server with a web interface, local expiry sweeper, an
 - **Path normalization**: file paths are normalized to reduce traversal risk.
 - **Local expiry index + sweeper**: expiration is tracked in `data/expiry-index.json` and cleaned by an in-process background sweeper.
 - **Private file redirect flow**: private-index (tracked in `data/private-files.json`) matches on `/files/:path` redirect to `/private-files/:path`.
-- **Cloudflare Access verification**: `/private-files/:path` verifies `Cf-Access-Jwt-Assertion` JWT (cached for 1 hour).
+- **Cloudflare Access verification**: `/private-files/:path` verifies `Cf-Access-Jwt-Assertion` or `bearer_token` JWT (cached for 1 hour).
 - **Web interface**: built-in React/Vite upload UI.
 
 ## Usage
@@ -185,7 +185,7 @@ curl -i http://localhost:8000/files/sample.txt
 
 Read private file content.
 
-- Requires request header: `Cf-Access-Jwt-Assertion`
+- Requires request header: `Cf-Access-Jwt-Assertion` or `bearer_token`
 - Validates JWT signature/issuer/audience/expiry
 - Applies optional email/group allowlists
 
