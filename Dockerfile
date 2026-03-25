@@ -1,6 +1,6 @@
 # use the official Bun image
 # see all versions at https://hub.docker.com/r/oven/bun/tags
-FROM oven/bun:1.3.2-debian AS web-builder
+FROM oven/bun:1.3.11-slim AS web-builder
 
 WORKDIR /build
 
@@ -12,7 +12,7 @@ RUN bun install --frozen-lockfile
 COPY ./web/ ./
 RUN bun dist
 
-FROM rust:1.91.1-trixie AS builder
+FROM rust:1.94.0-trixie AS builder
 
 RUN set -x && apt-get update && \
     DEBIAN_FRONTEND=noninteractive apt-get install -y protobuf-compiler && \
