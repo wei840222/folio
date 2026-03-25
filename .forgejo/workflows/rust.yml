@@ -17,16 +17,16 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6.0.1
+        uses: actions/checkout@v6.0.2
 
       - name: Install Protoc
         uses: arduino/setup-protoc@v3.0.0
         with:
-          version: "33.1"
+          version: "34.1"
           repo-token: ${{ secrets.GH_RATE_LIMIT_PAT }}
 
       - name: Setup Rust
-        uses: actions-rust-lang/setup-rust-toolchain@v1.15.2
+        uses: actions-rust-lang/setup-rust-toolchain@v1.15.4
         with:
           toolchain: stable
 
