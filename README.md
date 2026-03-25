@@ -63,20 +63,20 @@ Configured with `Folio.toml` and/or environment variables.
 
 ### Core
 
-| Key | Environment Variable | Default | Description |
-| --- | --- | --- | --- |
-| `web_path` | `FOLIO_WEB_PATH` | `./web/dist` | Path to static web assets |
-| `uploads_path` | `FOLIO_UPLOADS_PATH` | `./uploads` | Upload storage path |
-| `data_path` | `FOLIO_DATA_PATH` | `./data` | Persistent metadata (index/state) path |
+| Key            | Environment Variable | Default      | Description                            |
+| -------------- | -------------------- | ------------ | -------------------------------------- |
+| `web_path`     | `FOLIO_WEB_PATH`     | `./web/dist` | Path to static web assets              |
+| `uploads_path` | `FOLIO_UPLOADS_PATH` | `./uploads`  | Upload storage path                    |
+| `data_path`    | `FOLIO_DATA_PATH`    | `./data`     | Persistent metadata (index/state) path |
 
 ### Private access (Cloudflare Access)
 
-| Environment Variable | Default | Description |
-| --- | --- | --- |
-| `FOLIO_CF_ACCESS_ISSUER` | `https://example.cloudflareaccess.com` | Expected JWT issuer |
-| `FOLIO_CF_ACCESS_AUD` | _(empty)_ | Expected audience (required for production) |
-| `FOLIO_CF_ACCESS_JWKS_URL` | `${ISSUER}/cdn-cgi/access/certs` | JWK Set URL for signature verification |
-| `FOLIO_CF_ACCESS_HS256_SECRET` | _(unset)_ | Optional HS256 verifier secret (for local testing) |
+| Environment Variable           | Default                                | Description                                        |
+| ------------------------------ | -------------------------------------- | -------------------------------------------------- |
+| `FOLIO_CF_ACCESS_ISSUER`       | `https://example.cloudflareaccess.com` | Expected JWT issuer                                |
+| `FOLIO_CF_ACCESS_AUD`          | _(empty)_                              | Expected audience (required for production)        |
+| `FOLIO_CF_ACCESS_JWKS_URL`     | `${ISSUER}/cdn-cgi/access/certs`       | JWK Set URL for signature verification             |
+| `FOLIO_CF_ACCESS_HS256_SECRET` | _(unset)_                              | Optional HS256 verifier secret (for local testing) |
 
 Authorization is now per-file based. Access lists are defined during upload via the `authorized_emails` field.
 
@@ -134,31 +134,25 @@ FOLIO_CF_ACCESS_JWKS_URL=https://<team>.cloudflareaccess.com/cdn-cgi/access/cert
 Upload a file with generated ID-based filename.
 
 - Content-Type: `multipart/form-data`
-- **Recommended**: Set proper `Content-Type` header for the file field to ensure correct file extension detection. Without it, files may be saved without extensions.
 - Query parameters:
 
-| Name | Required | Type | Description | Default |
-| --- | :---: | --- | --- | --- |
-| `expire` | ❌ | Query string | TTL (`10s`, `5m`, `24h`, `7d`) | `168h` |
+| Name     | Required | Type         | Description                    | Default |
+| -------- | :------: | ------------ | ------------------------------ | ------- |
+| `expire` |    ❌    | Query string | TTL (`10s`, `5m`, `24h`, `7d`) | `168h`  |
 
 - Form-data fields:
 
-| Name | Required | Type | Description |
-| --- | :---: | --- | --- |
-| `file` | ✅ | File | File payload |
-| `authorized_emails` | ❌ | String | Comma-separated list of emails allowed to access this file. Presence of this field automatically marks the file as private. |
+| Name                | Required | Type   | Description                                                                                                                 |
+| ------------------- | :------: | ------ | --------------------------------------------------------------------------------------------------------------------------- |
+| `file`              |    ✅    | File   | File payload                                                                                                                |
+| `authorized_emails` |    ❌    | String | Comma-separated list of emails allowed to access this file. Presence of this field automatically marks the file as private. |
 
 **Note on file extensions:**
 
 The server determines file extension in the following order:
-1. **Content-Type from multipart field** (recommended) - explicitly specify using `curl --form` syntax
-2. **Original filename extension** - fallback if Content-Type is missing or generic
-3. **No extension** - if both above are unavailable or detected as `.bin`
 
-**Why Content-Type matters:**
-- Without explicit Content-Type, `curl -F` infers from file extension, which may result in generic `application/octet-stream` (`.bin`)
-- Generic `.bin` extensions are automatically discarded by the server
-- Explicitly setting Content-Type ensures correct extension detection
+1. **Content-Type from multipart field** (recommended) - explicitly specify using `curl -F` syntax
+2. **Original filename extension** - fallback if Content-Type is missing or generic
 
 Response:
 
@@ -174,7 +168,7 @@ curl -X POST \
   "http://localhost:8000/uploads?expire=1h" -i
 
 # Without Content-Type (may result in no extension if filename inference fails)
-curl -X POST -F "file=@sample.txt" \
+curl -X POST -F "file=@sample.txt;type=text/plain" \
   "http://localhost:8000/uploads?expire=1h" -i
 ```
 
