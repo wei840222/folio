@@ -61,6 +61,7 @@ WORKDIR /opt/folio
 COPY --from=builder /build/folio ./folio
 COPY --from=web-builder --chown=${uid}:${gid} /build/dist /opt/folio/web
 RUN mkdir -p /opt/folio/uploads && chown ${uid}:${gid} /opt/folio/uploads
+RUN mkdir -p /opt/folio/data && chown ${uid}:${gid} /opt/folio/data
 RUN mkdir -p /opt/folio/tmp && chown ${uid}:${gid} /opt/folio/tmp
 
 ENV RUST_LOG=info
@@ -71,6 +72,7 @@ ENV ROCKET_LIMITS='{file="5 MiB"}'
 ENV ROCKET_TMP_DIR="/opt/folio/tmp"
 ENV FOLIO_WEB_PATH="/opt/folio/web"
 ENV FOLIO_UPLOADS_PATH="/opt/folio/uploads"
+ENV FOLIO_DATA_PATH="/opt/folio/data"
 
 EXPOSE 8080/tcp
 
