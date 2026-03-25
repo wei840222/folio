@@ -11,6 +11,7 @@ use rocket::serde::{Serialize, json::Json};
 
 use super::config;
 use super::expiry::ExpiryStore;
+use super::private_index::PrivateIndexStore;
 
 /// A _probably_ unique upload id.
 pub struct UploadId(String);
@@ -45,12 +46,14 @@ pub struct UploadResponse {
 
 type UploadResult = Result<Created<Json<UploadResponse>>, Custom<Json<UploadResponse>>>;
 
-#[post("/?<expire>", data = "<file>")]
+#[post("/?<expire>&<private>", data = "<file>")]
 pub async fn upload_file(
     config: &State<config::Folio>,
     expiry_store: &State<std::sync::Arc<ExpiryStore>>,
+    private_store: &State<std::sync::Arc<PrivateIndexStore>>,
     mut file: Form<Strict<TempFile<'_>>>,
     expire: Option<&str>,
+    private: Option<bool>,
 ) -> UploadResult {
     // Determine file extension
     let extension = file
@@ -81,6 +84,20 @@ pub async fn upload_file(
             Json(UploadResponse { message }),
         )
     })?;
+
+    // Mark as private if requested
+    if private.unwrap_or(false) {
+        private_store
+            .mark_private(&PathBuf::from(&file_name))
+            .map_err(|e| {
+                let message = format!("failed to mark file as private: {}", e);
+                log::error!("POST /uploads error: {}", message);
+                Custom(
+                    Status::InternalServerError,
+                    Json(UploadResponse { message }),
+                )
+            })?;
+    }
 
     let ttl = match expire {
         Some(s) => parse_duration(s).unwrap_or(Duration::from_secs(168 * 3600)),
@@ -186,13 +203,16 @@ mod tests {
             let temp_dir = tempfile::tempdir().unwrap();
             let mut config = config::Folio::default();
             config.uploads_path = temp_dir.path().to_string_lossy().to_string();
+            config.data_path = temp_dir.path().to_string_lossy().to_string();
 
             let expiry_store = std::sync::Arc::new(ExpiryStore::new(&config));
+            let private_store = std::sync::Arc::new(PrivateIndexStore::new(&config));
 
             let rocket = rocket::build()
                 .mount("/uploads", routes![upload_file])
                 .manage(config)
-                .manage(expiry_store);
+                .manage(expiry_store)
+                .manage(private_store);
 
             (rocket, temp_dir)
         }

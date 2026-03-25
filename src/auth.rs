@@ -1,5 +1,6 @@
 use std::collections::HashSet;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
 
 use jsonwebtoken::{
     Algorithm, DecodingKey, Validation, decode, decode_header, errors::ErrorKind as JwtErrorKind,
@@ -29,6 +30,7 @@ pub struct AccessAuth {
     verify_mode: VerifyMode,
     allowed_emails: HashSet<String>,
     allowed_groups: HashSet<String>,
+    jwks_cache: Mutex<Option<(JwkSet, Instant)>>,
 }
 
 #[derive(Debug)]
@@ -109,7 +111,26 @@ impl AccessAuth {
             verify_mode,
             allowed_emails,
             allowed_groups,
+            jwks_cache: Mutex::new(None),
         }
+    }
+
+    fn get_jwks(&self, url: &str) -> Result<JwkSet, String> {
+        let mut cache = self
+            .jwks_cache
+            .lock()
+            .map_err(|_| "jwks cache lock poisoned".to_string())?;
+
+        if let Some((jwks, timestamp)) = &*cache {
+            if timestamp.elapsed() < Duration::from_secs(3600) {
+                return Ok(jwks.clone());
+            }
+        }
+
+        log::info!("fetching fresh jwks from {}", url);
+        let jwks = fetch_jwks(url)?;
+        *cache = Some((jwks.clone(), Instant::now()));
+        Ok(jwks)
     }
 
     #[cfg(test)]
@@ -136,6 +157,7 @@ impl AccessAuth {
             verify_mode,
             allowed_emails: allowed_emails.iter().map(|s| s.to_string()).collect(),
             allowed_groups: allowed_groups.iter().map(|s| s.to_string()).collect(),
+            jwks_cache: Mutex::new(None),
         }
     }
 
@@ -200,7 +222,7 @@ impl AccessAuth {
                     .map_err(|e| map_jwt_error_with_context("invalid_header", e))?;
                 let kid = header.kid.clone();
 
-                let jwks = fetch_jwks(jwks_url).map_err(|e| {
+                let jwks = self.get_jwks(jwks_url).map_err(|e| {
                     AccessAuthError::unauthorized("jwks_fetch_failed", format!("{}", e))
                 })?;
                 let key = select_key(&jwks.keys, kid.as_deref()).map_err(|e| {
@@ -285,12 +307,12 @@ struct AccessClaims {
     aud: Option<String>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone)]
 struct JwkSet {
     keys: Vec<Jwk>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone)]
 struct Jwk {
     kid: Option<String>,
     n: String,

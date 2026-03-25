@@ -287,6 +287,7 @@ mod tests {
             let temp_dir = tempfile::tempdir().unwrap();
             let mut config = config::Folio::default();
             config.uploads_path = temp_dir.path().to_string_lossy().to_string();
+            config.data_path = temp_dir.path().to_string_lossy().to_string();
 
             let private_index = std::sync::Arc::new(PrivateIndexStore::new(&config));
             let access_auth = std::sync::Arc::new(crate::auth::AccessAuth::from_parts(
@@ -541,7 +542,7 @@ mod tests {
             let file_path = temp_dir.path().join("secret.txt");
             std::fs::write(&file_path, "secret-content").unwrap();
 
-            let index_path = temp_dir.path().join(".private-files.json");
+            let index_path = temp_dir.path().join("private-files.json");
             std::fs::write(&index_path, r#"{"files":["secret.txt"]}"#).unwrap();
 
             let response = client.get("/files/secret.txt").dispatch();

@@ -28,7 +28,7 @@ pub struct ExpiryStore {
 impl ExpiryStore {
     pub fn new(config: &config::Folio) -> Self {
         let uploads_root = config.build_full_upload_path(&PathBuf::new());
-        let index_path = uploads_root.join(".expiry-index.json");
+        let index_path = config.build_full_data_path(&PathBuf::from("expiry-index.json"));
 
         Self {
             uploads_root,
@@ -160,6 +160,7 @@ mod tests {
         let config = config::Folio {
             web_path: "./web/dist".to_string(),
             uploads_path: temp_dir.path().to_string_lossy().to_string(),
+            data_path: temp_dir.path().to_string_lossy().to_string(),
             garbage_collection_pattern: vec![],
         };
         ExpiryStore::new(&config)
@@ -177,7 +178,7 @@ mod tests {
             .schedule(&file_path, Duration::from_secs(120))
             .unwrap();
 
-        let index_path = temp_dir.path().join(".expiry-index.json");
+        let index_path = temp_dir.path().join("expiry-index.json");
         assert!(index_path.exists());
 
         let raw = std::fs::read_to_string(index_path).unwrap();
@@ -200,7 +201,7 @@ mod tests {
 
         assert!(!file_path.exists());
 
-        let raw = std::fs::read_to_string(temp_dir.path().join(".expiry-index.json")).unwrap();
+        let raw = std::fs::read_to_string(temp_dir.path().join("expiry-index.json")).unwrap();
         let index: ExpiryIndex = serde_json::from_str(&raw).unwrap();
         assert!(index.entries.is_empty());
     }

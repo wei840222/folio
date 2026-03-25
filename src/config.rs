@@ -6,6 +6,7 @@ use std::path::{Component, PathBuf};
 pub struct Folio {
     pub web_path: String,
     pub uploads_path: String,
+    pub data_path: String,
     pub garbage_collection_pattern: Vec<String>,
 }
 
@@ -20,6 +21,23 @@ impl Folio {
                 .join(&self.uploads_path)
         };
 
+        self.normalize_and_join(&base, relative_path)
+    }
+
+    /// Build full file path for persistent data
+    pub fn build_full_data_path(&self, relative_path: &PathBuf) -> PathBuf {
+        let base = if PathBuf::from(&self.data_path).is_absolute() {
+            PathBuf::from(&self.data_path)
+        } else {
+            std::env::current_dir()
+                .unwrap_or_else(|_| PathBuf::from("."))
+                .join(&self.data_path)
+        };
+
+        self.normalize_and_join(&base, relative_path)
+    }
+
+    fn normalize_and_join(&self, base: &PathBuf, relative_path: &PathBuf) -> PathBuf {
         // Normalize the relative path to prevent directory traversal
         let normalized = relative_path
             .components()
@@ -55,6 +73,7 @@ impl<'r> Default for Folio {
         Folio {
             web_path: String::from("./web/dist"),
             uploads_path: String::from("./uploads"),
+            data_path: String::from("./data"),
             garbage_collection_pattern: vec![
                 String::from(r#"^\._.+"#),
                 String::from(r#"^\.DS_Store$"#),
@@ -133,6 +152,7 @@ mod tests {
             let config = Folio {
                 web_path: String::from("./web"),
                 uploads_path: String::from("./custom_uploads"),
+                data_path: String::from("./data"),
                 garbage_collection_pattern: vec![],
             };
             let path = config.build_full_upload_path(&PathBuf::from("test.txt"));
@@ -156,6 +176,7 @@ mod tests {
             let config = Folio {
                 web_path: String::from("./web"),
                 uploads_path: String::from("/tmp/test_uploads"),
+                data_path: String::from("./data"),
                 garbage_collection_pattern: vec![],
             };
             let path = config.build_full_upload_path(&PathBuf::from("test.txt"));
