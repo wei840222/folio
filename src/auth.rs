@@ -219,7 +219,12 @@ impl<'r> FromRequest<'r> for VerifiedIdentity {
             }
         };
 
-        let token = match request.headers().get_one("Cf-Access-Jwt-Assertion") {
+        let token = request
+            .headers()
+            .get_one("Cf-Access-Jwt-Assertion")
+            .or_else(|| request.headers().get_one("bearer_token"));
+
+        let token = match token {
             Some(token) => token,
             None => {
                 log::warn!(
@@ -229,7 +234,8 @@ impl<'r> FromRequest<'r> for VerifiedIdentity {
                 );
                 return Outcome::Error((
                     Status::Unauthorized,
-                    "missing Cf-Access-Jwt-Assertion".to_string(),
+                    "missing authorization header (Cf-Access-Jwt-Assertion or bearer_token)"
+                        .to_string(),
                 ));
             }
         };
