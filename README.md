@@ -18,6 +18,7 @@ A lightweight file storage server with a web interface, local expiry sweeper, an
 - **Random filename generation**: `/uploads` generates unique 8-character filenames.
 - **Custom file paths**: `/files/:path` supports explicit create/update/delete.
 - **Path normalization**: file paths are normalized to reduce traversal risk.
+- **Edge-level write protection**: Cloudflare WAF blocks anonymous POST/PUT/DELETE on `/files/*` to prevent abuse (see [Security Model](https://forgejo.home-infra.weii.cloud/home-infra/folio.wiki/wiki/Security-Model)).
 - **Local expiry index + sweeper**: expiration is tracked in `data/expiry-index.json` and cleaned by an in-process background sweeper.
 - **Private file redirect flow**: private-index (tracked in `data/private-files.json`) matches on `/files/:path` redirect to `/private-files/:path`.
 - **Cloudflare Access verification**: `/private-files/:path` verifies `Cf-Access-Jwt-Assertion` or standard `Authorization: Bearer <token>` JWT (cached for 1 hour).
