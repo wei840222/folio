@@ -76,9 +76,48 @@ Configured with `Folio.toml` and/or environment variables.
 | `FOLIO_CF_ACCESS_ISSUER` | `https://example.cloudflareaccess.com` | Expected JWT issuer |
 | `FOLIO_CF_ACCESS_AUD` | _(empty)_ | Expected audience (required for production) |
 | `FOLIO_CF_ACCESS_JWKS_URL` | `${ISSUER}/cdn-cgi/access/certs` | JWK Set URL for signature verification |
-| `FOLIO_CF_ACCESS_HS256_SECRET` | _(unset)_ | Optional HS256 verifier secret (mainly for local/dev tests) |
+| `FOLIO_CF_ACCESS_HS256_SECRET` | _(unset)_ | Optional HS256 verifier secret (for local testing) |
 
 Authorization is now per-file based. Access lists are defined during upload via the `authorized_emails` field.
+
+### Local Development / Testing (HS256)
+
+When `FOLIO_CF_ACCESS_HS256_SECRET` is set, Folio will use this secret to verify JWTs instead of fetching JWKS from Cloudflare. This is useful for manual testing without a real Cloudflare Access setup.
+
+**Example Configuration (.env):**
+
+```bash
+FOLIO_CF_ACCESS_ISSUER=https://issuer.example.com
+FOLIO_CF_ACCESS_AUD=folio-app
+FOLIO_CF_ACCESS_HS256_SECRET=my-local-secret
+```
+
+**Testing with curl:**
+
+1.  **Upload a private file** for a specific user:
+
+```bash
+curl -X POST \
+  -F "file=@secret.txt" \
+  -F "authorized_emails=tester@example.com" \
+  "http://localhost:8000/uploads" -i
+```
+
+2.  **Access the file** using a generated HS256 token (you can use [jwt.io](https://jwt.io) to generate one with `my-local-secret`):
+
+```bash
+# Token payload should include:
+# {
+#   "iss": "https://issuer.example.com",
+#   "aud": "folio-app",
+#   "sub": "user-123",
+#   "email": "tester@example.com",
+#   "exp": <future_timestamp>
+# }
+
+curl -H "Cf-Access-Jwt-Assertion: <your-hs256-token>" \
+  "http://localhost:8000/private-files/<generated-id>.txt" -i
+```
 
 ### Example `.env` (production baseline)
 
