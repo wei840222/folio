@@ -268,7 +268,28 @@ struct AccessClaims {
     groups: Option<Vec<String>>,
     exp: Option<usize>,
     iss: Option<String>,
-    aud: Option<String>,
+    #[serde(deserialize_with = "deserialize_aud")]
+    aud: Option<Vec<String>>,
+}
+
+fn deserialize_aud<'de, D>(deserializer: D) -> Result<Option<Vec<String>>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    use serde::Deserialize;
+
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum StringOrVec {
+        String(String),
+        Vec(Vec<String>),
+    }
+
+    match Option::<StringOrVec>::deserialize(deserializer)? {
+        None => Ok(None),
+        Some(StringOrVec::String(s)) => Ok(Some(vec![s])),
+        Some(StringOrVec::Vec(v)) => Ok(Some(v)),
+    }
 }
 
 #[derive(Debug, Deserialize, Clone)]
@@ -456,5 +477,58 @@ mod tests {
         let err = auth.verify_and_authorize(&token).unwrap_err();
         assert_eq!(err.status(), Status::Unauthorized);
         assert_eq!(err.code(), "jwt_expired");
+    }
+
+    #[test]
+    fn verify_hs256_aud_array_success() {
+        use crate::test_utils::make_hs256_token_with_aud_array;
+
+        let secret = "test-secret";
+        let auth = AccessAuth::from_parts(
+            "https://issuer.example.com",
+            "folio-app",
+            Some(secret),
+        );
+
+        // Cloudflare Access sends aud as array
+        let token = make_hs256_token_with_aud_array(
+            secret,
+            "user-1",
+            Some("allowed@example.com"),
+            &["team-a"],
+            "https://issuer.example.com",
+            &["folio-app"],
+            3600,
+        );
+
+        let identity = auth.verify_and_authorize(&token).unwrap();
+        assert_eq!(identity.sub, "user-1");
+        assert_eq!(identity.email, Some("allowed@example.com".to_string()));
+    }
+
+    #[test]
+    fn verify_hs256_aud_array_wrong_audience_returns_401() {
+        use crate::test_utils::make_hs256_token_with_aud_array;
+
+        let secret = "test-secret";
+        let auth = AccessAuth::from_parts(
+            "https://issuer.example.com",
+            "folio-app",
+            Some(secret),
+        );
+
+        let token = make_hs256_token_with_aud_array(
+            secret,
+            "user-1",
+            Some("u@example.com"),
+            &[],
+            "https://issuer.example.com",
+            &["other-app", "another-app"],
+            3600,
+        );
+
+        let err = auth.verify_and_authorize(&token).unwrap_err();
+        assert_eq!(err.status(), Status::Unauthorized);
+        assert_eq!(err.code(), "jwt_invalid_audience");
     }
 }
