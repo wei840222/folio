@@ -14,7 +14,6 @@ use serde::{Deserialize, Serialize};
 pub struct AccessIdentity {
     pub sub: String,
     pub email: Option<String>,
-    pub groups: Vec<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -34,20 +33,12 @@ pub struct AccessAuth {
 #[derive(Debug)]
 pub enum AccessAuthError {
     Unauthorized { code: &'static str, message: String },
-    Forbidden { code: &'static str, message: String },
     Internal { code: &'static str, message: String },
 }
 
 impl AccessAuthError {
     fn unauthorized(code: &'static str, message: impl Into<String>) -> Self {
         Self::Unauthorized {
-            code,
-            message: message.into(),
-        }
-    }
-
-    fn forbidden(code: &'static str, message: impl Into<String>) -> Self {
-        Self::Forbidden {
             code,
             message: message.into(),
         }
@@ -63,7 +54,6 @@ impl AccessAuthError {
     pub fn status(&self) -> Status {
         match self {
             Self::Unauthorized { .. } => Status::Unauthorized,
-            Self::Forbidden { .. } => Status::Forbidden,
             Self::Internal { .. } => Status::InternalServerError,
         }
     }
@@ -71,7 +61,6 @@ impl AccessAuthError {
     pub fn code(&self) -> &'static str {
         match self {
             Self::Unauthorized { code, .. }
-            | Self::Forbidden { code, .. }
             | Self::Internal { code, .. } => code,
         }
     }
@@ -79,7 +68,6 @@ impl AccessAuthError {
     pub fn message(&self) -> &str {
         match self {
             Self::Unauthorized { message, .. }
-            | Self::Forbidden { message, .. }
             | Self::Internal { message, .. } => message,
         }
     }
@@ -165,7 +153,6 @@ impl AccessAuth {
         let identity = AccessIdentity {
             sub: claims.sub,
             email: claims.email,
-            groups: claims.groups.unwrap_or_default(),
         };
 
         Ok(identity)
@@ -337,19 +324,6 @@ fn map_jwt_error_with_context(
     };
 
     AccessAuthError::unauthorized(code, format!("jwt verification failed: {}", error))
-}
-
-fn split_csv_env(key: &str) -> HashSet<String> {
-    std::env::var(key)
-        .ok()
-        .map(|v| {
-            v.split(',')
-                .map(str::trim)
-                .filter(|s| !s.is_empty())
-                .map(ToOwned::to_owned)
-                .collect::<HashSet<_>>()
-        })
-        .unwrap_or_default()
 }
 
 #[cfg(test)]
