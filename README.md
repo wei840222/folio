@@ -109,7 +109,7 @@ curl -X POST \
 # Token payload should include:
 # {
 #   "iss": "https://issuer.example.com",
-#   "aud": "folio-app",
+#   "aud": "folio-app",              // Can also be an array: ["folio-app"]
 #   "sub": "user-123",
 #   "email": "tester@example.com",
 #   "exp": <future_timestamp>
@@ -118,6 +118,8 @@ curl -X POST \
 curl -H "Cf-Access-Jwt-Assertion: <your-hs256-token>" \
   "http://localhost:8000/private-files/<generated-id>.txt" -i
 ```
+
+**Note:** The `aud` (audience) field can be either a string or an array. Cloudflare Access typically sends it as an array `["audience-id"]`. Both formats are supported.
 
 ### Example `.env` (production baseline)
 
@@ -203,13 +205,14 @@ Read private file content.
 
 - Requires request header: `Cf-Access-Jwt-Assertion` or `Authorization: Bearer <token>`
 - Validates JWT signature/issuer/audience/expiry
-- Applies optional email/group allowlists
+- The `aud` field can be either a string or an array (Cloudflare Access sends it as array)
+- Checks per-file email authorization list
 
 Response:
 
 - `200 OK` when authorized
 - `401 Unauthorized` on missing/invalid token (signature/issuer/audience/expiry)
-- `403 Forbidden` on valid token but denied by email/group allowlist policy
+- `403 Forbidden` on valid token but email not in file's authorized list
 
 Example:
 
