@@ -6,10 +6,17 @@ use rocket::serde::{Deserialize, Serialize};
 
 use super::config;
 
+#[derive(Debug, Serialize, Deserialize, Clone, Default)]
+#[serde(crate = "rocket::serde")]
+pub struct PrivateEntry {
+    pub path: String,
+    pub authorized_emails: Vec<String>,
+}
+
 #[derive(Debug, Serialize, Deserialize, Default)]
 #[serde(crate = "rocket::serde")]
 struct PrivateIndex {
-    files: Vec<String>,
+    entries: Vec<PrivateEntry>,
 }
 
 pub struct PrivateIndexStore {
@@ -27,7 +34,7 @@ impl PrivateIndexStore {
         }
     }
 
-    pub fn mark_private(&self, relative_path: &Path) -> Result<(), String> {
+    pub fn mark_private(&self, relative_path: &Path, authorized_emails: Vec<String>) -> Result<(), String> {
         let _guard = self
             .lock
             .lock()
@@ -36,15 +43,16 @@ impl PrivateIndexStore {
         let mut index = self.load_index()?;
         let normalized = relative_path.to_string_lossy().to_string();
 
-        if !index.files.contains(&normalized) {
-            index.files.push(normalized);
-            self.save_index(&index)?;
-        }
+        index.entries.retain(|e| e.path != normalized);
+        index.entries.push(PrivateEntry {
+            path: normalized,
+            authorized_emails,
+        });
 
-        Ok(())
+        self.save_index(&index)
     }
 
-    pub fn is_private(&self, relative_path: &Path) -> Result<bool, String> {
+    pub fn get_entry(&self, relative_path: &Path) -> Result<Option<PrivateEntry>, String> {
         let _guard = self
             .lock
             .lock()
@@ -52,9 +60,12 @@ impl PrivateIndexStore {
 
         let normalized = relative_path.to_string_lossy().to_string();
         let index = self.load_index()?;
-        let set: HashSet<&str> = index.files.iter().map(|s| s.as_str()).collect();
 
-        Ok(set.contains(normalized.as_str()))
+        Ok(index.entries.iter().find(|e| e.path == normalized).cloned())
+    }
+
+    pub fn is_private(&self, relative_path: &Path) -> Result<bool, String> {
+        Ok(self.get_entry(relative_path)?.is_some())
     }
 
     fn load_index(&self) -> Result<PrivateIndex, String> {
@@ -107,18 +118,21 @@ mod tests {
     fn test_is_private_true() {
         let dir = tempdir().unwrap();
         let index_file = dir.path().join("private-files.json");
-        fs::write(index_file, r#"{"files": ["test.txt", "secret.png"]}"#).unwrap();
+        fs::write(index_file, r#"{"entries": [{"path": "test.txt", "authorized_emails": ["a@b.com"]}, {"path": "secret.png", "authorized_emails": []}]}"#).unwrap();
 
         let store = setup_store(dir.path());
         assert!(store.is_private(Path::new("test.txt")).unwrap());
         assert!(store.is_private(Path::new("secret.png")).unwrap());
+        
+        let entry = store.get_entry(Path::new("test.txt")).unwrap().unwrap();
+        assert_eq!(entry.authorized_emails, vec!["a@b.com"]);
     }
 
     #[test]
     fn test_is_private_false() {
         let dir = tempdir().unwrap();
-        let index_file = dir.path().join(".private-files.json");
-        fs::write(index_file, r#"{"files": ["test.txt"]}"#).unwrap();
+        let index_file = dir.path().join("private-files.json");
+        fs::write(index_file, r#"{"entries": [{"path": "test.txt", "authorized_emails": []}]}"#).unwrap();
 
         let store = setup_store(dir.path());
         assert!(!store.is_private(Path::new("other.txt")).unwrap());
@@ -134,8 +148,8 @@ mod tests {
     #[test]
     fn test_is_private_empty_index() {
         let dir = tempdir().unwrap();
-        let index_file = dir.path().join(".private-files.json");
-        fs::write(index_file, r#"{"files": []}"#).unwrap();
+        let index_file = dir.path().join("private-files.json");
+        fs::write(index_file, r#"{"entries": []}"#).unwrap();
 
         let store = setup_store(dir.path());
         assert!(!store.is_private(Path::new("test.txt")).unwrap());
@@ -145,7 +159,7 @@ mod tests {
     fn test_is_private_malformed_index() {
         let dir = tempdir().unwrap();
         let index_file = dir.path().join("private-files.json");
-        fs::write(index_file, r#"{"files": ["test.txt"}"#).unwrap(); // missing ]
+        fs::write(index_file, r#"{"entries": [{"path": "test.txt"}"#).unwrap(); // missing ]
 
         let store = setup_store(dir.path());
         assert!(store.is_private(Path::new("test.txt")).is_err());

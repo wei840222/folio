@@ -113,15 +113,52 @@ pub async fn get_file(
 #[get("/<path..>", rank = 5)]
 pub async fn get_private_file(
     config: &State<config::Folio>,
+    private_index: &State<std::sync::Arc<PrivateIndexStore>>,
     identity: VerifiedIdentity,
     path: ValidatedPath,
 ) -> Result<NamedFile, Custom<Json<FileResponse>>> {
+    let entry = private_index.get_entry(&path).map_err(|e| {
+        Custom(
+            Status::InternalServerError,
+            Json(FileResponse {
+                message: format!("failed to read private index: {}", e),
+            }),
+        )
+    })?;
+
+    match entry {
+        Some(e) => {
+            let email = identity.0.email.as_deref().unwrap_or("");
+            if !e.authorized_emails.iter().any(|em| em == email) {
+                log::warn!(
+                    "private file access denied: email '{}' not authorized for path '{}'",
+                    email,
+                    path.to_string_lossy()
+                );
+                return Err(Custom(
+                    Status::Forbidden,
+                    Json(FileResponse {
+                        message: "email not authorized for this file".to_string(),
+                    }),
+                ));
+            }
+        }
+        None => {
+            // Not in private index? Redirect to public path or just serve it?
+            // Existing logic redirects public files here ONLY if they are in the index.
+            // If we're here and not in index, something is weird. Serve anyway?
+            log::warn!(
+                "accessing /private-files/ for non-private path: {}",
+                path.to_string_lossy()
+            );
+        }
+    }
+
     let full_path = config.build_full_upload_path(&path);
     log::info!(
-        "private file access granted: sub={}, email={:?}, groups_count={}, path={}",
+        "private file access granted: sub={}, email={:?}, path={}",
         identity.0.sub,
         identity.0.email,
-        identity.0.groups.len(),
         path.to_string_lossy()
     );
 
@@ -543,7 +580,7 @@ mod tests {
             std::fs::write(&file_path, "secret-content").unwrap();
 
             let index_path = temp_dir.path().join("private-files.json");
-            std::fs::write(&index_path, r#"{"files":["secret.txt"]}"#).unwrap();
+            std::fs::write(&index_path, r#"{"entries":[{"path":"secret.txt", "authorized_emails": []}]}"#).unwrap();
 
             let response = client.get("/files/secret.txt").dispatch();
             assert_eq!(response.status(), Status::Found);
@@ -570,8 +607,11 @@ mod tests {
             let temp_dir = tempfile::tempdir().unwrap();
             let mut config = config::Folio::default();
             config.uploads_path = temp_dir.path().to_string_lossy().to_string();
+            config.data_path = temp_dir.path().to_string_lossy().to_string();
 
             let private_index = std::sync::Arc::new(PrivateIndexStore::new(&config));
+            private_index.mark_private(&PathBuf::from("secret.txt"), vec!["allowed@example.com".to_string()]).unwrap();
+
             let access_auth = std::sync::Arc::new(crate::auth::AccessAuth::from_parts(
                 "https://issuer.example.com",
                 "folio-app",
@@ -618,13 +658,16 @@ mod tests {
             let temp_dir = tempfile::tempdir().unwrap();
             let mut config = config::Folio::default();
             config.uploads_path = temp_dir.path().to_string_lossy().to_string();
+            config.data_path = temp_dir.path().to_string_lossy().to_string();
 
             let private_index = std::sync::Arc::new(PrivateIndexStore::new(&config));
+            private_index.mark_private(&PathBuf::from("secret.txt"), vec!["only@example.com".to_string()]).unwrap();
+
             let access_auth = std::sync::Arc::new(crate::auth::AccessAuth::from_parts(
                 "https://issuer.example.com",
                 "folio-app",
                 Some("test-secret"),
-                &["only@example.com"],
+                &[],
                 &[],
             ));
 

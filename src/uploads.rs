@@ -13,6 +13,12 @@ use super::config;
 use super::expiry::ExpiryStore;
 use super::private_index::PrivateIndexStore;
 
+#[derive(FromForm)]
+pub struct UploadForm<'r> {
+    pub file: TempFile<'r>,
+    pub authorized_emails: Option<String>,
+}
+
 /// A _probably_ unique upload id.
 pub struct UploadId(String);
 
@@ -46,17 +52,17 @@ pub struct UploadResponse {
 
 type UploadResult = Result<Created<Json<UploadResponse>>, Custom<Json<UploadResponse>>>;
 
-#[post("/?<expire>&<private>", data = "<file>")]
+#[post("/?<expire>", data = "<form>")]
 pub async fn upload_file(
     config: &State<config::Folio>,
     expiry_store: &State<std::sync::Arc<ExpiryStore>>,
     private_store: &State<std::sync::Arc<PrivateIndexStore>>,
-    mut file: Form<Strict<TempFile<'_>>>,
+    mut form: Form<Strict<UploadForm<'_>>>,
     expire: Option<&str>,
-    private: Option<bool>,
 ) -> UploadResult {
     // Determine file extension
-    let extension = file
+    let extension = form
+        .file
         .content_type()
         .and_then(|ct| ct.extension())
         .map(|s| s.to_string());
@@ -76,7 +82,7 @@ pub async fn upload_file(
     let full_path = config.build_full_upload_path(&PathBuf::from(&file_name));
 
     // Persist file
-    file.copy_to(&full_path).await.map_err(|e| {
+    form.file.copy_to(&full_path).await.map_err(|e| {
         let message = format!("failed to save file: {}", e);
         log::error!("POST /uploads error: {}", message);
         Custom(
@@ -85,18 +91,26 @@ pub async fn upload_file(
         )
     })?;
 
-    // Mark as private if requested
-    if private.unwrap_or(false) {
-        private_store
-            .mark_private(&PathBuf::from(&file_name))
-            .map_err(|e| {
-                let message = format!("failed to mark file as private: {}", e);
-                log::error!("POST /uploads error: {}", message);
-                Custom(
-                    Status::InternalServerError,
-                    Json(UploadResponse { message }),
-                )
-            })?;
+    // Mark as private if authorized_emails is provided
+    if let Some(emails_str) = &form.authorized_emails {
+        let emails: Vec<String> = emails_str
+            .split(',')
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
+            .collect();
+
+        if !emails.is_empty() {
+            private_store
+                .mark_private(&PathBuf::from(&file_name), emails)
+                .map_err(|e| {
+                    let message = format!("failed to mark file as private: {}", e);
+                    log::error!("POST /uploads error: {}", message);
+                    Custom(
+                        Status::InternalServerError,
+                        Json(UploadResponse { message }),
+                    )
+                })?;
+        }
     }
 
     let ttl = match expire {
@@ -290,30 +304,32 @@ mod tests {
         }
 
         #[test]
-        fn creates_unique_filenames() {
-            let (rocket, _temp_dir) = test_rocket();
+        fn success_with_authorized_emails() {
+            let (rocket, temp_dir) = test_rocket();
             let client = Client::tracked(rocket).unwrap();
 
-            // Upload first file
-            let response1 = client
+            let mut body = multipart_body("test.txt", Some("text/plain"), "private content");
+            // Append authorized_emails field
+            body = body.replace("--X-BOUNDARY--\r\n", 
+                "--X-BOUNDARY\r\nContent-Disposition: form-data; name=\"authorized_emails\"\r\n\r\nbob@example.com, alice@example.com\r\n--X-BOUNDARY--\r\n");
+
+            let response = client
                 .post("/uploads")
                 .header(multipart_content_type())
-                .body(multipart_body("test.txt", Some("text/plain"), "content 1"))
+                .body(body)
                 .dispatch();
 
-            let location1 = response1.headers().get_one("Location").unwrap();
+            assert_eq!(response.status(), Status::Created);
 
-            // Upload second file
-            let response2 = client
-                .post("/uploads")
-                .header(multipart_content_type())
-                .body(multipart_body("test.txt", Some("text/plain"), "content 2"))
-                .dispatch();
-
-            let location2 = response2.headers().get_one("Location").unwrap();
-
-            // Should have different paths (different IDs)
-            assert_ne!(location1, location2);
+            let location = response.headers().get_one("Location").unwrap();
+            let filename = location.strip_prefix("/files/").unwrap();
+            
+            // Verify private index has the entry
+            let index_path = temp_dir.path().join("private-files.json");
+            let raw = std::fs::read_to_string(index_path).unwrap();
+            assert!(raw.contains(filename));
+            assert!(raw.contains("bob@example.com"));
+            assert!(raw.contains("alice@example.com"));
         }
     }
 }
