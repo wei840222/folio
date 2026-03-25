@@ -18,9 +18,9 @@ A lightweight file storage server with a web interface, local expiry sweeper, an
 - **Random filename generation**: `/uploads` generates unique 8-character filenames.
 - **Custom file paths**: `/files/:path` supports explicit create/update/delete.
 - **Path normalization**: file paths are normalized to reduce traversal risk.
-- **Local expiry index + sweeper**: expiration is tracked in `uploads/.expiry-index.json` and cleaned by an in-process background sweeper.
-- **Private file redirect flow**: private-index matches on `/files/:path` redirect to `/private-files/:path`.
-- **Cloudflare Access verification**: `/private-files/:path` verifies `Cf-Access-Jwt-Assertion` JWT.
+- **Local expiry index + sweeper**: expiration is tracked in `data/expiry-index.json` and cleaned by an in-process background sweeper.
+- **Private file redirect flow**: private-index (tracked in `data/private-files.json`) matches on `/files/:path` redirect to `/private-files/:path`.
+- **Cloudflare Access verification**: `/private-files/:path` verifies `Cf-Access-Jwt-Assertion` JWT (cached for 1 hour).
 - **Web interface**: built-in React/Vite upload UI.
 
 ## Usage
@@ -67,6 +67,7 @@ Configured with `Folio.toml` and/or environment variables.
 | --- | --- | --- | --- |
 | `web_path` | `FOLIO_WEB_PATH` | `./web/dist` | Path to static web assets |
 | `uploads_path` | `FOLIO_UPLOADS_PATH` | `./uploads` | Upload storage path |
+| `data_path` | `FOLIO_DATA_PATH` | `./data` | Persistent metadata (index/state) path |
 
 ### Private access (Cloudflare Access)
 
@@ -104,6 +105,7 @@ Upload a file with generated ID-based filename.
 | --- | :---: | --- | --- | --- |
 | `file` | ✅ | Form data | File payload | |
 | `expire` | ❌ | Query string | TTL (`10s`, `5m`, `24h`, `7d`) | `168h` |
+| `private` | ❌ | Query string | Protect with JWT Auth (`true`, `false`) | `false` |
 
 Response:
 
@@ -207,9 +209,9 @@ curl -X DELETE "http://localhost:8000/files/docs/sample.txt"
 
 ## Notes
 
-- Local metadata files:
-  - `uploads/.expiry-index.json`
-  - `uploads/.private-files.json`
+- Local persistent data files:
+  - `data/expiry-index.json`
+  - `data/private-files.json`
 - `garbage_collection_pattern` exists in config but GC cleanup is not implemented.
 
 ## Related docs
