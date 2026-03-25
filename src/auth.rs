@@ -222,7 +222,12 @@ impl<'r> FromRequest<'r> for VerifiedIdentity {
         let token = request
             .headers()
             .get_one("Cf-Access-Jwt-Assertion")
-            .or_else(|| request.headers().get_one("bearer_token"));
+            .or_else(|| {
+                request
+                    .headers()
+                    .get_one("Authorization")
+                    .and_then(|h| h.strip_prefix("Bearer ").or(h.strip_prefix("bearer ")))
+            });
 
         let token = match token {
             Some(token) => token,
