@@ -67,9 +67,8 @@ pub async fn upload_file(
             // If it's a generic 'bin' extension, try to see if the original filename has a better one
             if ext.as_deref() == Some("bin") {
                 form.file
-                    .file_name()
-                    .and_then(|path| path.extension())
-                    .map(|os| os.to_string_lossy().to_string())
+                    .name()
+                    .and_then(|nm| PathBuf::from(nm).extension().map(|os| os.to_string_lossy().to_string()))
                     .or(ext)
             } else {
                 ext
@@ -77,9 +76,8 @@ pub async fn upload_file(
         }
         None => form
             .file
-            .file_name()
-            .and_then(|path| path.extension())
-            .map(|os| os.to_string_lossy().to_string()),
+            .name()
+            .and_then(|nm| PathBuf::from(nm).extension().map(|os| os.to_string_lossy().to_string())),
     };
     let ext_ref = extension.as_deref();
 
