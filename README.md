@@ -76,11 +76,9 @@ Configured with `Folio.toml` and/or environment variables.
 | `FOLIO_CF_ACCESS_ISSUER` | `https://example.cloudflareaccess.com` | Expected JWT issuer |
 | `FOLIO_CF_ACCESS_AUD` | _(empty)_ | Expected audience (required for production) |
 | `FOLIO_CF_ACCESS_JWKS_URL` | `${ISSUER}/cdn-cgi/access/certs` | JWK Set URL for signature verification |
-| `FOLIO_CF_ACCESS_ALLOWED_EMAILS` | _(empty)_ | Comma-separated allowed emails |
-| `FOLIO_CF_ACCESS_ALLOWED_GROUPS` | _(empty)_ | Comma-separated allowed groups |
 | `FOLIO_CF_ACCESS_HS256_SECRET` | _(unset)_ | Optional HS256 verifier secret (mainly for local/dev tests) |
 
-If allowlists are empty, JWT validity gates access and no extra allowlist filtering is applied.
+Authorization is now per-file based. Access lists are defined during upload via the `authorized_emails` field.
 
 ### Example `.env` (production baseline)
 
@@ -88,8 +86,6 @@ If allowlists are empty, JWT validity gates access and no extra allowlist filter
 FOLIO_CF_ACCESS_ISSUER=https://<team>.cloudflareaccess.com
 FOLIO_CF_ACCESS_AUD=<your-access-audience>
 FOLIO_CF_ACCESS_JWKS_URL=https://<team>.cloudflareaccess.com/cdn-cgi/access/certs
-FOLIO_CF_ACCESS_ALLOWED_EMAILS=alice@example.com,bob@example.com
-FOLIO_CF_ACCESS_ALLOWED_GROUPS=folio-admins,folio-readers
 ```
 
 ## API
@@ -103,19 +99,33 @@ Upload a file with generated ID-based filename.
 
 | Name | Required | Type | Description | Default |
 | --- | :---: | --- | --- | --- |
-| `file` | ✅ | Form data | File payload | |
 | `expire` | ❌ | Query string | TTL (`10s`, `5m`, `24h`, `7d`) | `168h` |
-| `private` | ❌ | Query string | Protect with JWT Auth (`true`, `false`) | `false` |
+
+- Form-data fields:
+
+| Name | Required | Type | Description |
+| --- | :---: | --- | --- |
+| `file` | ✅ | File | File payload |
+| `authorized_emails` | ❌ | String | Comma-separated list of emails allowed to access this file. Presence of this field automatically marks the file as private. |
 
 Response:
 
 - `201 Created`
 - `Location` header: `/files/<generated-name>`
 
-Example:
+Example (Public):
 
 ```bash
 curl -X POST -F "file=@sample.txt" "http://localhost:8000/uploads?expire=1h" -i
+```
+
+Example (Private):
+
+```bash
+curl -X POST \
+  -F "file=@secret.txt" \
+  -F "authorized_emails=bob@example.com,alice@example.com" \
+  "http://localhost:8000/uploads" -i
 ```
 
 ### `GET /files/:path`
@@ -202,9 +212,9 @@ curl -X DELETE "http://localhost:8000/files/docs/sample.txt"
 4. Verify auth failures:
    - no `Cf-Access-Jwt-Assertion` header on `/private-files/...` returns `401`
    - invalid token returns `401`
-   - valid token but disallowed email/group returns `403`
+   - valid token but email not in the file's `authorized_emails` list returns `403`
 5. Verify authorized access:
-   - valid token + allowed policy returns `200`
+   - valid token + email matches the list returns `200`
 6. Check logs for deny audit entries (code/status/path/method) and ensure no token leakage.
 
 ## Notes
