@@ -134,6 +134,7 @@ FOLIO_CF_ACCESS_JWKS_URL=https://<team>.cloudflareaccess.com/cdn-cgi/access/cert
 Upload a file with generated ID-based filename.
 
 - Content-Type: `multipart/form-data`
+- **Recommended**: Set proper `Content-Type` header for the file field to ensure correct file extension detection. Without it, files may be saved without extensions.
 - Query parameters:
 
 | Name | Required | Type | Description | Default |
@@ -147,25 +148,46 @@ Upload a file with generated ID-based filename.
 | `file` | ✅ | File | File payload |
 | `authorized_emails` | ❌ | String | Comma-separated list of emails allowed to access this file. Presence of this field automatically marks the file as private. |
 
+**Note on file extensions:**
+
+The server determines file extension in the following order:
+1. **Content-Type from multipart field** (recommended) - explicitly specify using `curl --form` syntax
+2. **Original filename extension** - fallback if Content-Type is missing or generic
+3. **No extension** - if both above are unavailable or detected as `.bin`
+
+**Why Content-Type matters:**
+- Without explicit Content-Type, `curl -F` infers from file extension, which may result in generic `application/octet-stream` (`.bin`)
+- Generic `.bin` extensions are automatically discarded by the server
+- Explicitly setting Content-Type ensures correct extension detection
+
 Response:
 
 - `201 Created`
 - `Location` header: `/files/<generated-name>`
 
-Example (Public):
+**Example (Public):**
 
 ```bash
-curl -X POST -F "file=@sample.txt" "http://localhost:8000/uploads?expire=1h" -i
+# Recommended: explicitly set Content-Type to ensure correct extension
+curl -X POST \
+  --form 'file=@sample.txt;type=text/plain' \
+  "http://localhost:8000/uploads?expire=1h" -i
+
+# Without Content-Type (may result in no extension if filename inference fails)
+curl -X POST -F "file=@sample.txt" \
+  "http://localhost:8000/uploads?expire=1h" -i
 ```
 
-Example (Private):
+**Example (Private):**
 
 ```bash
 curl -X POST \
-  -F "file=@secret.txt" \
+  --form 'file=@secret.pdf;type=application/pdf' \
   -F "authorized_emails=bob@example.com,alice@example.com" \
   "http://localhost:8000/uploads" -i
 ```
+
+**Reference:** See [this article](https://ryanseddon.com/hacking/content-type-formdata-curl/) for detailed `curl` Content-Type syntax.
 
 ### `GET /files/:path`
 

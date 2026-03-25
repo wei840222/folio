@@ -76,7 +76,9 @@ pub async fn upload_file(
         );
 
         match (ct_ext, nm_ext) {
-            // Priority: if filename has an extension, use it, especially if content-type is generic 'bin'
+            // If content-type extension is 'bin', discard it (no extension)
+            (Some(ext), _) if ext == "bin" => None,
+            // Priority: if filename has an extension, use it
             (_, Some(ext)) if !ext.is_empty() => Some(ext),
             // Fallback to content-type extension if filename has none
             (Some(ext), None) => Some(ext.to_string()),
