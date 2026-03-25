@@ -58,10 +58,10 @@ ALWAYS format the upload confirmation as follows:
 ```markdown
 ### ✅ File Uploaded Successfully
 
-- **URL**: [https://folio.weii.cloud/files/<filename>](https://folio.weii.cloud/files/<filename>)
-- **Visibility**: [Public | Private]
-- **Expires**: <expiration_time>
-- **Access Control**: <authorized_emails | None>
+- **URL**: <https://folio.weii.cloud/files/(filename)>
+- **Visibility**: (Public | Private)
+- **Expires**: (expiration_time)
+- **Access Control**: (authorized_emails | None)
 ```
 
 ## Parameter Reference
