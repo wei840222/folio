@@ -1,6 +1,6 @@
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
-use std::sync::Mutex;
+use tokio::sync::Mutex;
 
 use rocket::serde::{Deserialize, Serialize};
 
@@ -28,27 +28,23 @@ impl PrivateIndexStore {
         }
     }
 
-    pub fn is_private(&self, relative_path: &Path) -> Result<bool, String> {
-        let _guard = self
-            .lock
-            .lock()
-            .map_err(|_| "private index lock poisoned".to_string())?;
+    pub async fn is_private(&self, relative_path: &Path) -> Result<bool, String> {
+        let _guard = self.lock.lock().await;
 
         let normalized = relative_path.to_string_lossy().to_string();
-        let index = self.load_index()?;
+        let index = self.load_index().await?;
         let set: HashSet<&str> = index.files.iter().map(|s| s.as_str()).collect();
 
         Ok(set.contains(normalized.as_str()))
     }
 
-    fn load_index(&self) -> Result<PrivateIndex, String> {
-        if !self.index_path.exists() {
-            return Ok(PrivateIndex::default());
+    async fn load_index(&self) -> Result<PrivateIndex, String> {
+        match tokio::fs::read_to_string(&self.index_path).await {
+            Ok(raw) => {
+                serde_json::from_str(&raw).map_err(|e| format!("parse private index failed: {}", e))
+            }
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(PrivateIndex::default()),
+            Err(e) => Err(format!("read private index failed: {}", e)),
         }
-
-        let raw = std::fs::read_to_string(&self.index_path)
-            .map_err(|e| format!("read private index failed: {}", e))?;
-
-        serde_json::from_str(&raw).map_err(|e| format!("parse private index failed: {}", e))
     }
 }

@@ -87,7 +87,7 @@ pub async fn upload_file(
         None => Duration::from_secs(168 * 3600),
     };
 
-    expiry_store.schedule(&full_path, ttl).map_err(|e| {
+    expiry_store.schedule(&full_path, ttl).await.map_err(|e| {
         let message = format!("failed to schedule expiration for {}: {}", file_name, e);
         log::error!("POST /uploads error: {}", message);
         Custom(
