@@ -63,7 +63,7 @@ pub async fn get_file(
     private_index: &State<std::sync::Arc<PrivateIndexStore>>,
     path: ValidatedPath,
 ) -> Result<FileGetResponse, Custom<Json<FileResponse>>> {
-    let is_private = private_index.is_private(&path).map_err(|e| {
+    let is_private = private_index.is_private(&path).await.map_err(|e| {
         Custom(
             Status::InternalServerError,
             Json(FileResponse {
