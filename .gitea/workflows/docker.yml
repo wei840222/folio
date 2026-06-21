@@ -11,30 +11,31 @@ on:
       - main
 
 env:
-  REGISTRY: registry-forgejo.home-infra.weii.cloud
-  IMAGE_NAME: ${{ forgejo.repository }}
+  REGISTRY: registry-gitea.home-infra.weii.cloud
+  IMAGE_NAME: ${{ gitea.repository }}
 
 jobs:
-  Docker Build & Push:
+  build-push:
     runs-on: ubuntu-latest
+
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6.0.2
+        uses: actions/checkout@v6
 
       - name: Configure Docker Buildx
-        uses: docker/setup-buildx-action@v4.0.0
+        uses: docker/setup-buildx-action@v4
         with:
           driver-opts: image=moby/buildkit:latest
 
       - name: Extract Docker metadata
         id: meta
-        uses: docker/metadata-action@v6.0.0
+        uses: docker/metadata-action@v6
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
 
-      - name: Local build
+      - name: Build Docker image
         id: build
-        uses: docker/build-push-action@v7.0.0
+        uses: docker/build-push-action@v7
         with:
           file: ./Dockerfile
           context: ./
@@ -44,11 +45,11 @@ jobs:
           cache-from: type=local,src=/buildx-cache,compression=zstd
           cache-to: type=local,dest=/buildx-cache,compression=zstd,mode=max
 
-      - name: Scan vulnerability
-        uses: aquasecurity/trivy-action@0.35.0
+      - name: Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           token-setup-trivy: ${{ secrets.GH_RATE_LIMIT_PAT }}
-          version: v0.69.3
+          version: v0.70.0
           scan-type: image
           image-ref: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${{ steps.build.outputs.digest }}
           format: table
@@ -57,14 +58,14 @@ jobs:
           ignore-unfixed: true
 
       - name: Login to Docker Registry
-        uses: docker/login-action@v4.0.0
+        uses: docker/login-action@v4
         with:
           registry: ${{ env.REGISTRY }}
-          username: ${{ forgejo.actor }}
+          username: ${{ gitea.actor }}
           password: ${{ secrets.PACKAGE_PAT }}
 
-      - name: Build multi-arch & push
-        uses: docker/build-push-action@v7.0.0
+      - name: Push Docker image
+        uses: docker/build-push-action@v7
         with:
           file: ./Dockerfile
           context: ./
