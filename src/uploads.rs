@@ -157,6 +157,9 @@ pub async fn upload_file(
 fn parse_duration(s: &str) -> Result<Duration, String> {
     // Simple parser for now: supports 's', 'm', 'h', 'd'
     // e.g., "10s", "5m", "24h"
+    // Max allowed value is capped to prevent overflow: 10_000_000 units.
+    const MAX_VALUE: u64 = 10_000_000;
+
     let len = s.len();
     if len < 2 {
         return Err("Invalid duration format".to_string());
@@ -164,13 +167,22 @@ fn parse_duration(s: &str) -> Result<Duration, String> {
 
     let unit = &s[len - 1..];
     let val_str = &s[..len - 1];
-    let val: u64 = val_str.parse().map_err(|_| "Invalid number".to_string())?;
+    let val: u64 = val_str
+        .parse()
+        .map_err(|_| "Invalid number".to_string())?;
+
+    if val > MAX_VALUE {
+        return Err(format!(
+            "Duration value {} exceeds maximum allowed {}",
+            val, MAX_VALUE
+        ));
+    }
 
     match unit {
         "s" => Ok(Duration::from_secs(val)),
-        "m" => Ok(Duration::from_secs(val * 60)),
-        "h" => Ok(Duration::from_secs(val * 3600)),
-        "d" => Ok(Duration::from_secs(val * 86400)),
+        "m" => Ok(Duration::from_secs(val.saturating_mul(60))),
+        "h" => Ok(Duration::from_secs(val.saturating_mul(3_600))),
+        "d" => Ok(Duration::from_secs(val.saturating_mul(86_400))),
         _ => Err("Unknown unit".to_string()),
     }
 }
