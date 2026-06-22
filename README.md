@@ -29,39 +29,37 @@ A lightweight file storage server with a web interface, local expiry sweeper, an
 
 ## Architecture
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│                  Web Frontend (React 19)                     │
-│           Vite + TypeScript + Tailwind CSS 4                 │
-│         FileUploadZone → POST /uploads → DownloadLink        │
-└────────────────────────────┬────────────────────────────────┘
-                             │
-┌────────────────────────────▼────────────────────────────────┐
-│                 Rust Backend (Rocket 0.5)                    │
-├─────────────────────────────────────────────────────────────┤
-│  /health          → health()               [health check]   │
-│  /uploads  POST   → upload_file()          [random ID+TTL]  │
-│  /files    GET    → get_file()             [public access]  │
-│  /files    POST   → create_file()          [explicit path]  │
-│  /files    PUT    → upsert_file()          [upsert]         │
-│  /files    DELETE → delete_file()          [delete]         │
-│  /private-files GET → get_private_file()   [JWT protected]  │
-│  /                → FileServer             [SPA static]     │
-└─────────────────────────────────────────────────────────────┘
-        │                  │                  │
-   ┌────▼────┐       ┌────▼─────┐      ┌────▼──────┐
-   │ config  │       │ Expiry   │      │ Private   │
-   │ (Figment│       │ Store    │      │ Index     │
-   │  TOML+  │       │ (60s     │      │ Store     │
-   │  ENV)   │       │ sweeper) │      │ (JSON)    │
-   └─────────┘       └──────────┘      └───────────┘
-                                          │
-                                    ┌─────▼─────┐
-                                    │  Access   │
-                                    │  Auth     │
-                                    │ (JWT/     │
-                                    │  JWKS)    │
-                                    └───────────┘
+```mermaid
+flowchart TD
+    subgraph frontend["Web Frontend (React 19)"]
+        direction LR
+        FE1[FileUploadZone] -->|POST /uploads| FE2[DownloadLink]
+        FE_DESC[Vite + TypeScript + Tailwind CSS 4]
+    end
+
+    subgraph backend["Rust Backend (Rocket 0.5)"]
+        direction LR
+        R1[/health → health]
+        R2[/uploads POST → upload_file]
+        R3[/files GET → get_file]
+        R4[/files POST → create_file]
+        R5[/files PUT → upsert_file]
+        R6[/files DELETE → delete_file]
+        R7[/private-files GET → get_private_file]
+        R8[/ → FileServer]
+    end
+
+    frontend -->|HTTP| backend
+
+    subgraph state["Managed State"]
+        direction LR
+        S1[config\nFigment TOML+ENV]
+        S2[ExpiryStore\n60s sweeper]
+        S3[PrivateIndexStore\nJSON index]
+        S4[AccessAuth\nJWT / JWKS]
+    end
+
+    backend --> state
 ```
 
 ### Tech Stack
