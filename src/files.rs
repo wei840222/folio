@@ -281,9 +281,6 @@ pub async fn delete_file(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use rocket::http::{ContentType, Status};
-    use rocket::local::blocking::Client;
-    use std::sync::Arc;
 
     mod file_endpoints {
         use super::*;

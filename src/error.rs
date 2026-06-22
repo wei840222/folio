@@ -10,7 +10,6 @@ use std::io::Cursor;
 #[derive(Debug)]
 pub enum FolioError {
     NotFound { path: String },
-    Unauthorized { reason: String },
     Forbidden { reason: String },
     Conflict { path: String },
     BadRequest { reason: String },
@@ -21,7 +20,6 @@ impl FolioError {
     pub fn status(&self) -> Status {
         match self {
             Self::NotFound { .. } => Status::NotFound,
-            Self::Unauthorized { .. } => Status::Unauthorized,
             Self::Forbidden { .. } => Status::Forbidden,
             Self::Conflict { .. } => Status::Conflict,
             Self::BadRequest { .. } => Status::BadRequest,
@@ -32,7 +30,6 @@ impl FolioError {
     pub fn message(&self) -> String {
         match self {
             Self::NotFound { path } => format!("file not found: {}", path),
-            Self::Unauthorized { reason } => reason.clone(),
             Self::Forbidden { reason } => reason.clone(),
             Self::Conflict { path } => format!("file already exists: {}", path),
             Self::BadRequest { reason } => reason.clone(),
@@ -75,10 +72,12 @@ impl<'r> Responder<'r, 'static> for FolioError {
 }
 
 /// Convert `Result<T, String>` from stores into `Result<T, FolioError>`.
+#[allow(dead_code)]
 pub trait StoreResultExt<T> {
     fn store_context(self, context: &str) -> Result<T, FolioError>;
 }
 
+#[allow(dead_code)]
 impl<T> StoreResultExt<T> for Result<T, String> {
     fn store_context(self, context: &str) -> Result<T, FolioError> {
         self.map_err(|e| FolioError::store_error(e, context))

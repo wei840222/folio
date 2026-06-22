@@ -47,19 +47,6 @@ impl SafePath {
         Ok(SafePath(path.to_path_buf()))
     }
 
-    /// Resolve this safe path against the given root directory.
-    ///
-    /// This is the only way to get an absolute path from a SafePath.
-    /// The result is guaranteed to be within the root directory.
-    pub fn resolve(&self, root: &Path) -> PathBuf {
-        root.join(&self.0)
-    }
-
-    /// Get the relative path as a string.
-    pub fn as_str(&self) -> &str {
-        self.0.to_str().unwrap_or("")
-    }
-
     /// Get the inner Path reference.
     pub fn as_path(&self) -> &Path {
         &self.0
