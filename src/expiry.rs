@@ -1,10 +1,10 @@
 use std::path::{Path, PathBuf};
-use std::sync::Mutex;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use rocket::serde::{Deserialize, Serialize};
 
 use super::config;
+use super::store::JsonFileStore;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(crate = "rocket::serde")]
@@ -21,8 +21,7 @@ struct ExpiryIndex {
 
 pub struct ExpiryStore {
     uploads_root: PathBuf,
-    index_path: PathBuf,
-    lock: Mutex<()>,
+    store: JsonFileStore<ExpiryIndex>,
 }
 
 impl ExpiryStore {
@@ -32,8 +31,7 @@ impl ExpiryStore {
 
         Self {
             uploads_root,
-            index_path,
-            lock: Mutex::new(()),
+            store: JsonFileStore::new(index_path),
         }
     }
 
@@ -45,12 +43,8 @@ impl ExpiryStore {
             ));
         }
 
-        let _guard = self
-            .lock
-            .lock()
-            .map_err(|_| "expiry store lock poisoned".to_string())?;
-
-        let mut index = self.load_index()?;
+        let _guard = self.store.lock()?;
+        let mut index = self.store.load()?;
 
         let normalized = path.to_string_lossy().to_string();
         index.entries.retain(|entry| entry.path != normalized);
@@ -59,27 +53,21 @@ impl ExpiryStore {
             expire_at_unix: now_unix_secs().saturating_add(ttl.as_secs()),
         });
 
-        self.save_index(&index)
+        self.store.save(&index)
     }
 
     pub fn spawn_sweeper(self: std::sync::Arc<Self>, interval: Duration) {
-        std::thread::spawn(move || {
-            loop {
-                std::thread::sleep(interval);
-                if let Err(err) = self.sweep_once() {
-                    log::error!("expiry sweep failed: {}", err);
-                }
+        std::thread::spawn(move || loop {
+            std::thread::sleep(interval);
+            if let Err(err) = self.sweep_once() {
+                log::error!("expiry sweep failed: {}", err);
             }
         });
     }
 
     fn sweep_once(&self) -> Result<(), String> {
-        let _guard = self
-            .lock
-            .lock()
-            .map_err(|_| "expiry store lock poisoned".to_string())?;
-
-        let mut index = self.load_index()?;
+        let _guard = self.store.lock()?;
+        let mut index = self.store.load()?;
         let now = now_unix_secs();
 
         let mut kept = Vec::with_capacity(index.entries.len());
@@ -113,35 +101,7 @@ impl ExpiryStore {
         }
 
         index.entries = kept;
-        self.save_index(&index)
-    }
-
-    fn load_index(&self) -> Result<ExpiryIndex, String> {
-        if !self.index_path.exists() {
-            return Ok(ExpiryIndex::default());
-        }
-
-        let raw = std::fs::read_to_string(&self.index_path)
-            .map_err(|e| format!("read expiry index failed: {}", e))?;
-
-        serde_json::from_str(&raw).map_err(|e| format!("parse expiry index failed: {}", e))
-    }
-
-    fn save_index(&self, index: &ExpiryIndex) -> Result<(), String> {
-        if let Some(parent) = self.index_path.parent() {
-            std::fs::create_dir_all(parent)
-                .map_err(|e| format!("create index dir failed: {}", e))?;
-        }
-
-        let content = serde_json::to_string_pretty(index)
-            .map_err(|e| format!("serialize expiry index failed: {}", e))?;
-
-        let tmp_path = self.index_path.with_extension("json.tmp");
-        std::fs::write(&tmp_path, content).map_err(|e| format!("write tmp index failed: {}", e))?;
-        std::fs::rename(&tmp_path, &self.index_path)
-            .map_err(|e| format!("replace index failed: {}", e))?;
-
-        Ok(())
+        self.store.save(&index)
     }
 }
 

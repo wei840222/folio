@@ -58,3 +58,4 @@ async fn rocket() -> _ {
         .manage(private_index_store)
         .manage(access_auth)
 }
+mod store;
