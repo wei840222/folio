@@ -328,15 +328,15 @@ fn select_key<'a>(keys: &'a [Jwk], kid: Option<&str>) -> Result<&'a Jwk, String>
         return Err("jwks has no keys".to_string());
     }
 
+    // If kid is specified, we MUST find a matching key
     if let Some(target_kid) = kid {
-        if let Some(key) = keys
+        return keys
             .iter()
             .find(|key| key.kid.as_deref() == Some(target_kid))
-        {
-            return Ok(key);
-        }
+            .ok_or_else(|| format!("jwk with kid '{}' not found in jwks", target_kid));
     }
 
+    // No kid specified, use the first key
     Ok(&keys[0])
 }
 

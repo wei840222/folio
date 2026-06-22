@@ -88,13 +88,26 @@ pub async fn upload_file(
     };
     let ext_ref = extension.as_deref();
 
-    // Generate unique ID, retry if file already exists
+    // Generate unique ID, retry if file already exists (max 10 attempts)
     let id = loop {
         let candidate = UploadId::new(8);
         let file_name = candidate.file_name(ext_ref);
         let path = config.build_full_upload_path(&PathBuf::from(&file_name));
         if !path.exists() {
             break candidate;
+        }
+        
+        // Safety check: prevent infinite loop in case of extreme collision
+        static RETRY_COUNT: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+        let count = RETRY_COUNT.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        if count > 10 {
+            log::error!("Failed to generate unique upload ID after 10 attempts");
+            return Err(Custom(
+                Status::InternalServerError,
+                Json(UploadResponse {
+                    message: "failed to generate unique file ID".to_string(),
+                }),
+            ));
         }
     };
 

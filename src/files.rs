@@ -1,5 +1,5 @@
 use std::ops::Deref;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use rocket::State;
 use rocket::form::{Form, Strict};
@@ -191,7 +191,7 @@ pub async fn get_private_file(
 }
 
 /// Ensure parent directories exist
-fn ensure_parent_dirs(path: &PathBuf) -> Result<(), Custom<Json<FileResponse>>> {
+fn ensure_parent_dirs(path: &Path) -> Result<(), Custom<Json<FileResponse>>> {
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent).map_err(|e| {
             let message = format!("failed to create directories: {:?}", e);

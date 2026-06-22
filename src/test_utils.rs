@@ -4,7 +4,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 pub fn now_ts() -> usize {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
-        .unwrap()
+        .expect("system time before Unix epoch")
         .as_secs() as usize
 }
 
@@ -49,7 +49,7 @@ pub fn make_hs256_token_with_aud_array(
         &claims,
         &EncodingKey::from_secret(secret.as_bytes()),
     )
-    .unwrap()
+    .expect("failed to encode HS256 token")
 }
 
 fn make_hs256_token_with_aud(
@@ -81,5 +81,5 @@ fn make_hs256_token_with_aud(
         &claims,
         &EncodingKey::from_secret(secret.as_bytes()),
     )
-    .unwrap()
+    .expect("failed to encode HS256 token")
 }
