@@ -79,34 +79,7 @@ pub async fn get_file(
         ))));
     }
 
-    let full_path = config.build_full_upload_path(&path);
-    if !full_path.exists() {
-        return Err(Custom(
-            Status::NotFound,
-            Json(FileResponse {
-                message: format!("file not found: {}", path.to_string_lossy()),
-            }),
-        ));
-    }
-
-    if !full_path.is_file() {
-        return Err(Custom(
-            Status::BadRequest,
-            Json(FileResponse {
-                message: format!("path is not a file: {}", path.to_string_lossy()),
-            }),
-        ));
-    }
-
-    let file = NamedFile::open(full_path).await.map_err(|e| {
-        Custom(
-            Status::InternalServerError,
-            Json(FileResponse {
-                message: format!("failed to open file: {}", e),
-            }),
-        )
-    })?;
-
+    let file = open_upload_file(config, &path).await?;
     Ok(FileGetResponse::File(file))
 }
 
@@ -154,13 +127,34 @@ pub async fn get_private_file(
         }
     }
 
-    let full_path = config.build_full_upload_path(&path);
     log::info!(
         "private file access granted: sub={}, email={:?}, path={}",
         identity.0.sub,
         identity.0.email,
         path.to_string_lossy()
     );
+
+    open_upload_file(config, &path).await
+}
+
+/// Ensure parent directories exist
+fn ensure_parent_dirs(path: &Path) -> Result<(), Custom<Json<FileResponse>>> {
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent).map_err(|e| {
+            let message = format!("failed to create directories: {:?}", e);
+            log::error!("{}, path: {}", message, path.to_string_lossy());
+            Custom(Status::InternalServerError, Json(FileResponse { message }))
+        })?;
+    }
+    Ok(())
+}
+
+/// Validate and open an upload file, returning a `NamedFile` on success.
+async fn open_upload_file(
+    config: &State<config::Folio>,
+    path: &ValidatedPath,
+) -> Result<NamedFile, Custom<Json<FileResponse>>> {
+    let full_path = config.build_full_upload_path(path);
 
     if !full_path.exists() {
         return Err(Custom(
@@ -188,18 +182,6 @@ pub async fn get_private_file(
             }),
         )
     })
-}
-
-/// Ensure parent directories exist
-fn ensure_parent_dirs(path: &Path) -> Result<(), Custom<Json<FileResponse>>> {
-    if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent).map_err(|e| {
-            let message = format!("failed to create directories: {:?}", e);
-            log::error!("{}, path: {}", message, path.to_string_lossy());
-            Custom(Status::InternalServerError, Json(FileResponse { message }))
-        })?;
-    }
-    Ok(())
 }
 
 #[post("/<path..>", data = "<file>", rank = 5)]

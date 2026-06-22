@@ -11,30 +11,25 @@ pub struct Folio {
 }
 
 impl Folio {
-    /// Build full file path for uploads with normalized path
-    pub fn build_full_upload_path(&self, relative_path: &PathBuf) -> PathBuf {
-        let base = if PathBuf::from(&self.uploads_path).is_absolute() {
-            PathBuf::from(&self.uploads_path)
+    fn resolve_base(&self, path_str: &str) -> PathBuf {
+        let p = PathBuf::from(path_str);
+        if p.is_absolute() {
+            p
         } else {
             std::env::current_dir()
                 .unwrap_or_else(|_| PathBuf::from("."))
-                .join(&self.uploads_path)
-        };
+                .join(path_str)
+        }
+    }
 
-        self.normalize_and_join(&base, relative_path)
+    /// Build full file path for uploads with normalized path
+    pub fn build_full_upload_path(&self, relative_path: &PathBuf) -> PathBuf {
+        self.normalize_and_join(&self.resolve_base(&self.uploads_path), relative_path)
     }
 
     /// Build full file path for persistent data
     pub fn build_full_data_path(&self, relative_path: &PathBuf) -> PathBuf {
-        let base = if PathBuf::from(&self.data_path).is_absolute() {
-            PathBuf::from(&self.data_path)
-        } else {
-            std::env::current_dir()
-                .unwrap_or_else(|_| PathBuf::from("."))
-                .join(&self.data_path)
-        };
-
-        self.normalize_and_join(&base, relative_path)
+        self.normalize_and_join(&self.resolve_base(&self.data_path), relative_path)
     }
 
     fn normalize_and_join(&self, base: &PathBuf, relative_path: &PathBuf) -> PathBuf {
