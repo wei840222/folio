@@ -34,29 +34,29 @@ flowchart TD
     subgraph frontend["Web Frontend (React 19)"]
         direction LR
         FE1[FileUploadZone] -->|POST /uploads| FE2[DownloadLink]
-        FE_DESC[Vite + TypeScript + Tailwind CSS 4]
+        FE_DESC["Vite + TypeScript + Tailwind CSS 4"]
     end
 
     subgraph backend["Rust Backend (Rocket 0.5)"]
         direction LR
-        R1[/health → health]
-        R2[/uploads POST → upload_file]
-        R3[/files GET → get_file]
-        R4[/files POST → create_file]
-        R5[/files PUT → upsert_file]
-        R6[/files DELETE → delete_file]
-        R7[/private-files GET → get_private_file]
-        R8[/ → FileServer]
+        R1["/health"]
+        R2["/uploads POST"]
+        R3["/files GET"]
+        R4["/files POST"]
+        R5["/files PUT"]
+        R6["/files DELETE"]
+        R7["/private-files GET"]
+        R8["/ (SPA static)"]
     end
 
     frontend -->|HTTP| backend
 
     subgraph state["Managed State"]
         direction LR
-        S1[config\nFigment TOML+ENV]
-        S2[ExpiryStore\n60s sweeper]
-        S3[PrivateIndexStore\nJSON index]
-        S4[AccessAuth\nJWT / JWKS]
+        S1["config (Figment TOML+ENV)"]
+        S2["ExpiryStore (60s sweeper)"]
+        S3["PrivateIndexStore (JSON)"]
+        S4["AccessAuth (JWT / JWKS)"]
     end
 
     backend --> state
