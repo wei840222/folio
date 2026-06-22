@@ -1,7 +1,9 @@
 mod auth;
 mod config;
+mod error;
 mod expiry;
 mod files;
+mod path;
 mod private_index;
 #[cfg(test)]
 mod test_utils;

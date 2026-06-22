@@ -4,25 +4,33 @@ use std::path::{Path, PathBuf};
 use rocket::State;
 use rocket::form::{Form, Strict};
 use rocket::fs::{NamedFile, TempFile};
-use rocket::http::Status;
 use rocket::http::uri::Segments;
 use rocket::request::FromSegments;
-use rocket::response::status::Custom;
 use rocket::response::{Redirect, Responder};
-use rocket::serde::{Serialize, json::Json};
+use rocket::serde::json::Json;
 
 use super::auth::VerifiedIdentity;
 use super::config;
+use super::error::FolioError;
+use super::path::SafePath;
 use super::private_index::PrivateIndexStore;
 
-/// Validated path that prevents directory traversal
-pub struct ValidatedPath(PathBuf);
+/// Validated path that prevents directory traversal.
+///
+/// Wraps SafePath to provide FromSegments extraction for Rocket routes.
+pub struct ValidatedPath(SafePath);
 
 impl Deref for ValidatedPath {
-    type Target = PathBuf;
+    type Target = SafePath;
 
     fn deref(&self) -> &Self::Target {
         &self.0
+    }
+}
+
+impl std::fmt::Display for ValidatedPath {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
     }
 }
 
@@ -33,23 +41,26 @@ impl<'r> FromSegments<'r> for ValidatedPath {
         segments: Segments<'r, rocket::http::uri::fmt::Path>,
     ) -> Result<Self, Self::Error> {
         let path = PathBuf::from_segments(segments).map_err(|_| "invalid path")?;
-
-        if path.to_string_lossy().contains("..") {
-            log::warn!("invalid file path: {}", path.display());
-            return Err("path contains '..'");
-        }
-
-        Ok(ValidatedPath(path))
+        let safe_path = SafePath::from_user_input(&path).map_err(|_| "invalid path")?;
+        Ok(ValidatedPath(safe_path))
     }
 }
 
-#[derive(Serialize)]
+#[derive(rocket::serde::Serialize)]
 #[serde(crate = "rocket::serde")]
 pub struct FileResponse {
     message: String,
 }
 
-type FileResult = Result<Custom<Json<FileResponse>>, Custom<Json<FileResponse>>>;
+impl FileResponse {
+    fn success(message: &str) -> Json<Self> {
+        Json(FileResponse {
+            message: message.to_string(),
+        })
+    }
+}
+
+type FileResult = Result<rocket::response::status::Custom<Json<FileResponse>>, FolioError>;
 
 #[derive(Responder)]
 pub enum FileGetResponse {
@@ -62,20 +73,15 @@ pub async fn get_file(
     config: &State<config::Folio>,
     private_index: &State<std::sync::Arc<PrivateIndexStore>>,
     path: ValidatedPath,
-) -> Result<FileGetResponse, Custom<Json<FileResponse>>> {
-    let is_private = private_index.is_private(&path).map_err(|e| {
-        Custom(
-            Status::InternalServerError,
-            Json(FileResponse {
-                message: format!("failed to read private index: {}", e),
-            }),
-        )
-    })?;
+) -> Result<FileGetResponse, FolioError> {
+    let is_private = private_index
+        .is_private(path.as_path())
+        .map_err(|e| FolioError::store_error(e, "check private index"))?;
 
     if is_private {
         return Ok(FileGetResponse::Redirect(Redirect::found(format!(
             "/private-files/{}",
-            path.to_string_lossy()
+            path
         ))));
     }
 
@@ -89,15 +95,10 @@ pub async fn get_private_file(
     private_index: &State<std::sync::Arc<PrivateIndexStore>>,
     identity: VerifiedIdentity,
     path: ValidatedPath,
-) -> Result<NamedFile, Custom<Json<FileResponse>>> {
-    let entry = private_index.get_entry(&path).map_err(|e| {
-        Custom(
-            Status::InternalServerError,
-            Json(FileResponse {
-                message: format!("failed to read private index: {}", e),
-            }),
-        )
-    })?;
+) -> Result<NamedFile, FolioError> {
+    let entry = private_index
+        .get_entry(path.as_path())
+        .map_err(|e| FolioError::store_error(e, "check private index"))?;
 
     match entry {
         Some(e) => {
@@ -106,23 +107,17 @@ pub async fn get_private_file(
                 log::warn!(
                     "private file access denied: email '{}' not authorized for path '{}'",
                     email,
-                    path.to_string_lossy()
+                    path
                 );
-                return Err(Custom(
-                    Status::Forbidden,
-                    Json(FileResponse {
-                        message: "email not authorized for this file".to_string(),
-                    }),
-                ));
+                return Err(FolioError::Forbidden {
+                    reason: "email not authorized for this file".to_string(),
+                });
             }
         }
         None => {
-            // Not in private index? Redirect to public path or just serve it?
-            // Existing logic redirects public files here ONLY if they are in the index.
-            // If we're here and not in index, something is weird. Serve anyway?
             log::warn!(
                 "accessing /private-files/ for non-private path: {}",
-                path.to_string_lossy()
+                path
             );
         }
     }
@@ -131,19 +126,22 @@ pub async fn get_private_file(
         "private file access granted: sub={}, email={:?}, path={}",
         identity.0.sub,
         identity.0.email,
-        path.to_string_lossy()
+        path
     );
 
     open_upload_file(config, &path).await
 }
 
 /// Ensure parent directories exist
-fn ensure_parent_dirs(path: &Path) -> Result<(), Custom<Json<FileResponse>>> {
+fn ensure_parent_dirs(path: &Path) -> Result<(), FolioError> {
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent).map_err(|e| {
             let message = format!("failed to create directories: {:?}", e);
-            log::error!("{}, path: {}", message, path.to_string_lossy());
-            Custom(Status::InternalServerError, Json(FileResponse { message }))
+            log::error!("{}, path: {}", message, path.display());
+            FolioError::Internal {
+                source: message,
+                context: Some(format!("create directories for: {}", path.display())),
+            }
         })?;
     }
     Ok(())
@@ -153,34 +151,26 @@ fn ensure_parent_dirs(path: &Path) -> Result<(), Custom<Json<FileResponse>>> {
 async fn open_upload_file(
     config: &State<config::Folio>,
     path: &ValidatedPath,
-) -> Result<NamedFile, Custom<Json<FileResponse>>> {
-    let full_path = config.build_full_upload_path(path);
+) -> Result<NamedFile, FolioError> {
+    let full_path = config.build_full_upload_path(&PathBuf::from(path.as_path()));
 
     if !full_path.exists() {
-        return Err(Custom(
-            Status::NotFound,
-            Json(FileResponse {
-                message: format!("file not found: {}", path.to_string_lossy()),
-            }),
-        ));
+        return Err(FolioError::NotFound {
+            path: path.to_string(),
+        });
     }
 
     if !full_path.is_file() {
-        return Err(Custom(
-            Status::BadRequest,
-            Json(FileResponse {
-                message: format!("path is not a file: {}", path.to_string_lossy()),
-            }),
-        ));
+        return Err(FolioError::BadRequest {
+            reason: format!("path is not a file: {}", path),
+        });
     }
 
     NamedFile::open(full_path).await.map_err(|e| {
-        Custom(
-            Status::InternalServerError,
-            Json(FileResponse {
-                message: format!("failed to open file: {}", e),
-            }),
-        )
+        FolioError::Internal {
+            source: format!("failed to open file: {}", e),
+            context: Some(format!("open file: {}", path)),
+        }
     })
 }
 
@@ -190,16 +180,13 @@ pub async fn create_file(
     path: ValidatedPath,
     mut file: Form<Strict<TempFile<'_>>>,
 ) -> FileResult {
-    let full_path = config.build_full_upload_path(&path);
+    let full_path = config.build_full_upload_path(&PathBuf::from(path.as_path()));
 
     // Check if file already exists
     if full_path.exists() {
-        return Err(Custom(
-            Status::Conflict,
-            Json(FileResponse {
-                message: format!("file already exists: {}", path.to_string_lossy()),
-            }),
-        ));
+        return Err(FolioError::Conflict {
+            path: path.to_string(),
+        });
     }
 
     ensure_parent_dirs(&full_path)?;
@@ -208,14 +195,15 @@ pub async fn create_file(
     file.copy_to(&full_path).await.map_err(|e| {
         let message = format!("failed to save file: {:?}", e);
         log::error!("POST /files error: {}", message);
-        Custom(Status::InternalServerError, Json(FileResponse { message }))
+        FolioError::Internal {
+            source: message,
+            context: Some("save uploaded file".to_string()),
+        }
     })?;
 
-    Ok(Custom(
-        Status::Created,
-        Json(FileResponse {
-            message: "file created successfully".to_string(),
-        }),
+    Ok(rocket::response::status::Custom(
+        rocket::http::Status::Created,
+        FileResponse::success("file created successfully"),
     ))
 }
 
@@ -225,7 +213,7 @@ pub async fn upsert_file(
     path: ValidatedPath,
     mut file: Form<Strict<TempFile<'_>>>,
 ) -> FileResult {
-    let full_path = config.build_full_upload_path(&path);
+    let full_path = config.build_full_upload_path(&PathBuf::from(path.as_path()));
     let file_exists = full_path.exists();
 
     ensure_parent_dirs(&full_path)?;
@@ -234,68 +222,68 @@ pub async fn upsert_file(
     file.copy_to(&full_path).await.map_err(|e| {
         let message = format!("failed to save file: {:?}", e);
         log::error!("PUT /files error: {}", message);
-        Custom(Status::InternalServerError, Json(FileResponse { message }))
+        FolioError::Internal {
+            source: message,
+            context: Some("save uploaded file".to_string()),
+        }
     })?;
 
     if file_exists {
-        return Ok(Custom(
-            Status::Ok,
-            Json(FileResponse {
-                message: "file updated successfully".to_string(),
-            }),
-        ));
+        Ok(rocket::response::status::Custom(
+            rocket::http::Status::Ok,
+            FileResponse::success("file updated successfully"),
+        ))
+    } else {
+        Ok(rocket::response::status::Custom(
+            rocket::http::Status::Created,
+            FileResponse::success("file created successfully"),
+        ))
     }
-
-    Ok(Custom(
-        Status::Created,
-        Json(FileResponse {
-            message: "file created successfully".to_string(),
-        }),
-    ))
 }
 
 #[delete("/<path..>", rank = 5)]
-pub async fn delete_file(config: &State<config::Folio>, path: ValidatedPath) -> FileResult {
-    let full_path = config.build_full_upload_path(&path);
+pub async fn delete_file(
+    config: &State<config::Folio>,
+    path: ValidatedPath,
+) -> FileResult {
+    let full_path = config.build_full_upload_path(&PathBuf::from(path.as_path()));
 
     // Check if file exists
     if !full_path.exists() {
-        return Err(Custom(
-            Status::NotFound,
-            Json(FileResponse {
-                message: format!("file not found: {}", path.to_string_lossy()),
-            }),
-        ));
+        return Err(FolioError::NotFound {
+            path: path.to_string(),
+        });
     }
 
     // Check if it's a file (not a directory)
     if !full_path.is_file() {
-        return Err(Custom(
-            Status::BadRequest,
-            Json(FileResponse {
-                message: format!("path is not a file: {}", path.to_string_lossy()),
-            }),
-        ));
+        return Err(FolioError::BadRequest {
+            reason: format!("path is not a file: {}", path),
+        });
     }
 
     // Delete file
     std::fs::remove_file(&full_path).map_err(|e| {
         let message = format!("failed to delete file: {:?}", e);
         log::error!("DELETE /files error: {}", message);
-        Custom(Status::InternalServerError, Json(FileResponse { message }))
+        FolioError::Internal {
+            source: message,
+            context: Some(format!("delete file: {}", path)),
+        }
     })?;
 
-    Ok(Custom(
-        Status::Ok,
-        Json(FileResponse {
-            message: "file deleted successfully".to_string(),
-        }),
+    Ok(rocket::response::status::Custom(
+        rocket::http::Status::Ok,
+        FileResponse::success("file deleted successfully"),
     ))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use rocket::http::{ContentType, Status};
+    use rocket::local::blocking::Client;
+    use std::sync::Arc;
 
     mod file_endpoints {
         use super::*;
