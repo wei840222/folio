@@ -328,7 +328,7 @@ where
 }
 
 #[derive(Debug, Deserialize, Clone)]
-struct JwkSet {
+pub(crate) struct JwkSet {
     keys: Vec<Jwk>,
 }
 
