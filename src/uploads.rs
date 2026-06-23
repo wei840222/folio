@@ -89,25 +89,21 @@ pub async fn upload_file(
     let ext_ref = extension.as_deref();
 
     // Generate unique ID, retry if file already exists (max 10 attempts)
+    let mut attempts = 0u32;
     let id = loop {
         let candidate = UploadId::new(8);
         let file_name = candidate.file_name(ext_ref);
         let path = config.build_full_upload_path(&PathBuf::from(&file_name));
+        
         if !path.exists() {
             break candidate;
         }
         
-        // Safety check: prevent infinite loop in case of extreme collision
-        static RETRY_COUNT: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
-        let count = RETRY_COUNT.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-        if count > 10 {
-            log::error!("Failed to generate unique upload ID after 10 attempts");
-            return Err(Custom(
-                Status::InternalServerError,
-                Json(UploadResponse {
-                    message: "failed to generate unique file ID".to_string(),
-                }),
-            ));
+        attempts += 1;
+        if attempts >= 10 {
+            return Err(Custom(Status::InternalServerError, Json(UploadResponse {
+                message: "failed to generate unique upload id after 10 attempts".into(),
+            })));
         }
     };
 
@@ -135,6 +131,7 @@ pub async fn upload_file(
         if !emails.is_empty() {
             private_store
                 .mark_private(&PathBuf::from(&file_name), emails)
+                .await
                 .map_err(|e| {
                     let message = format!("failed to mark file as private: {}", e);
                     log::error!("POST /uploads error: {}", message);
@@ -151,7 +148,7 @@ pub async fn upload_file(
         None => Duration::from_secs(168 * 3600),
     };
 
-    expiry_store.schedule(&full_path, ttl).map_err(|e| {
+    expiry_store.schedule(&full_path, ttl).await.map_err(|e| {
         let message = format!("failed to schedule expiration for {}: {}", file_name, e);
         log::error!("POST /uploads error: {}", message);
         Custom(

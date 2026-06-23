@@ -4,6 +4,7 @@ use std::time::{Duration, Instant};
 use jsonwebtoken::{
     Algorithm, DecodingKey, Validation, decode, decode_header, errors::ErrorKind as JwtErrorKind,
 };
+use reqwest::Client;
 use rocket::State;
 use rocket::http::Status;
 use rocket::request::{FromRequest, Outcome, Request};
@@ -28,6 +29,7 @@ pub struct AccessAuth {
     audience: String,
     verify_mode: VerifyMode,
     jwks_cache: Mutex<Option<(JwkSet, Instant)>>,
+    client: Client,
 }
 
 #[derive(Debug)]
@@ -97,6 +99,7 @@ impl AccessAuth {
             audience,
             verify_mode,
             jwks_cache: Mutex::new(None),
+            client: Client::new(),
         }
     }
 
@@ -121,20 +124,50 @@ impl AccessAuth {
             audience: audience.to_string(),
             verify_mode,
             jwks_cache: Mutex::new(None),
+            client: Client::new(),
         }
     }
+    pub async fn get_jwks(&self, url: &str) -> Result<JwkSet, String> {
+        // Check if cache is valid first
+        let needs_fetch = {
+            let cache = self.jwks_cache.lock().await;
+            match &*cache {
+                Some((_, timestamp)) if timestamp.elapsed() < Duration::from_secs(3600) => {
+                    false
+                }
+                _ => true,
+            }
+        };
 
-    async fn get_jwks(&self, url: &str) -> Result<JwkSet, String> {
-        let mut cache = self.jwks_cache.lock().await;
-
-        if let Some((jwks, timestamp)) = &*cache {
-            if timestamp.elapsed() < Duration::from_secs(3600) {
+        if !needs_fetch {
+            let cache = self.jwks_cache.lock().await;
+            if let Some((jwks, _)) = &*cache {
                 return Ok(jwks.clone());
             }
+            return Err("jwks cache unexpectedly empty".to_string());
         }
 
+        // Release lock before making HTTP request
         log::info!("fetching fresh jwks from {}", url);
-        let jwks = fetch_jwks(url).await?;
+        let response = self.client.get(url)
+            .send()
+            .await
+            .map_err(|e| format!("fetch jwks failed: {}", e))?;
+
+        if !response.status().is_success() {
+            return Err(format!(
+                "fetch jwks failed with status {}",
+                response.status()
+            ));
+        }
+
+        let jwks = response
+            .json::<JwkSet>()
+            .await
+            .map_err(|e| format!("parse jwks failed: {}", e))?;
+
+        // Update cache
+        let mut cache = self.jwks_cache.lock().await;
         *cache = Some((jwks.clone(), Instant::now()));
         Ok(jwks)
     }
@@ -304,23 +337,6 @@ struct Jwk {
     kid: Option<String>,
     n: String,
     e: String,
-}
-
-async fn fetch_jwks(url: &str) -> Result<JwkSet, String> {
-    let response = reqwest::get(url)
-        .await
-        .map_err(|e| format!("fetch jwks failed: {}", e))?;
-    if !response.status().is_success() {
-        return Err(format!(
-            "fetch jwks failed with status {}",
-            response.status()
-        ));
-    }
-
-    response
-        .json::<JwkSet>()
-        .await
-        .map_err(|e| format!("parse jwks failed: {}", e))
 }
 
 fn select_key<'a>(keys: &'a [Jwk], kid: Option<&str>) -> Result<&'a Jwk, String> {

@@ -1,6 +1,6 @@
 use std::marker::PhantomData;
 use std::path::PathBuf;
-use std::sync::Mutex;
+use tokio::sync::Mutex;
 
 /// Generic JSON file store with atomic writes and mutex protection.
 ///
@@ -26,34 +26,36 @@ where
     }
 
     /// Acquire the store mutex.
-    pub fn lock(&self) -> Result<std::sync::MutexGuard<'_, ()>, String> {
-        self.lock
-            .lock()
-            .map_err(|_| "store lock poisoned".to_string())
+    pub async fn lock(&self) -> Result<tokio::sync::MutexGuard<'_, ()>, String> {
+        Ok(self.lock.lock().await)
     }
 
     /// Load the index from disk. Returns `T::default()` if the file doesn't exist.
-    pub fn load(&self) -> Result<T, String> {
+    pub async fn load(&self) -> Result<T, String> {
         if !self.index_path.exists() {
             return Ok(T::default());
         }
-        let raw = std::fs::read_to_string(&self.index_path)
+        let raw = tokio::fs::read_to_string(&self.index_path)
+            .await
             .map_err(|e| format!("read index failed: {}", e))?;
         serde_json::from_str(&raw).map_err(|e| format!("parse index failed: {}", e))
     }
 
     /// Atomically save the index to disk (write tmp + rename).
-    pub fn save(&self, data: &T) -> Result<(), String> {
+    pub async fn save(&self, data: &T) -> Result<(), String> {
         if let Some(parent) = self.index_path.parent() {
-            std::fs::create_dir_all(parent)
+            tokio::fs::create_dir_all(parent)
+                .await
                 .map_err(|e| format!("create index dir failed: {}", e))?;
         }
-        let content = serde_json::to_string_pretty(data)
+        let content = serde_json::to_string(data)
             .map_err(|e| format!("serialize index failed: {}", e))?;
         let tmp_path = self.index_path.with_extension("json.tmp");
-        std::fs::write(&tmp_path, content)
+        tokio::fs::write(&tmp_path, content)
+            .await
             .map_err(|e| format!("write tmp index failed: {}", e))?;
-        std::fs::rename(&tmp_path, &self.index_path)
+        tokio::fs::rename(&tmp_path, &self.index_path)
+            .await
             .map_err(|e| format!("replace index failed: {}", e))?;
         Ok(())
     }

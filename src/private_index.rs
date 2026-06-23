@@ -19,6 +19,7 @@ struct PrivateIndex {
 }
 
 pub struct PrivateIndexStore {
+    cache: std::sync::RwLock<std::collections::HashMap<String, bool>>,
     store: JsonFileStore<PrivateIndex>,
 }
 
@@ -26,36 +27,60 @@ impl PrivateIndexStore {
     pub fn new(config: &config::Folio) -> Self {
         let index_path = config.build_full_data_path(&PathBuf::from("private-files.json"));
         Self {
+            cache: std::sync::RwLock::new(std::collections::HashMap::new()),
             store: JsonFileStore::new(index_path),
         }
     }
 
-    pub fn mark_private(&self, relative_path: &Path, authorized_emails: Vec<String>) -> Result<(), String> {
-        let _guard = self.store.lock()?;
-
-        let mut index = self.store.load()?;
+    pub async fn mark_private(&self, relative_path: &Path, authorized_emails: Vec<String>) -> Result<(), String> {
+        let _guard = self.store.lock().await?;
+        let mut index = self.store.load().await?;
         let normalized = relative_path.to_string_lossy().to_string();
 
         index.entries.retain(|e| e.path != normalized);
         index.entries.push(PrivateEntry {
-            path: normalized,
+            path: normalized.clone(),
             authorized_emails,
         });
 
-        self.store.save(&index)
+        // Update cache
+        if let Ok(mut cache) = self.cache.write() {
+            cache.insert(normalized, true);
+        }
+
+        self.store.save(&index).await
     }
 
-    pub fn get_entry(&self, relative_path: &Path) -> Result<Option<PrivateEntry>, String> {
-        let _guard = self.store.lock()?;
-
+    pub async fn get_entry(&self, relative_path: &Path) -> Result<Option<PrivateEntry>, String> {
+        let _guard = self.store.lock().await?;
+        let index = self.store.load().await?;
         let normalized = relative_path.to_string_lossy().to_string();
-        let index = self.store.load()?;
 
         Ok(index.entries.iter().find(|e| e.path == normalized).cloned())
     }
 
-    pub fn is_private(&self, relative_path: &Path) -> Result<bool, String> {
-        Ok(self.get_entry(relative_path)?.is_some())
+    pub async fn is_private(&self, relative_path: &Path) -> Result<bool, String> {
+        let normalized = relative_path.to_string_lossy().to_string();
+
+        // Check cache first
+        if let Ok(cache) = self.cache.read() {
+            if let Some(&is_priv) = cache.get(&normalized) {
+                return Ok(is_priv);
+            }
+        }
+
+        // Cache miss - load from store
+        let _guard = self.store.lock().await?;
+        let index = self.store.load().await?;
+
+        let is_priv = index.entries.iter().any(|e| e.path == normalized);
+
+        // Update cache
+        if let Ok(mut cache) = self.cache.write() {
+            cache.insert(normalized, is_priv);
+        }
+
+        Ok(is_priv)
     }
 }
 
@@ -76,6 +101,13 @@ mod tests {
         PrivateIndexStore::new(&config)
     }
 
+    fn rt() -> tokio::runtime::Runtime {
+        tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap()
+    }
+
     #[test]
     fn test_is_private_true() {
         let dir = tempdir().unwrap();
@@ -87,11 +119,15 @@ mod tests {
         .unwrap();
 
         let store = setup_store(dir.path());
-        assert!(store.is_private(Path::new("test.txt")).unwrap());
-        assert!(store.is_private(Path::new("secret.png")).unwrap());
+        let runtime = rt();
 
-        let entry = store.get_entry(Path::new("test.txt")).unwrap().unwrap();
-        assert_eq!(entry.authorized_emails, vec!["a@b.com"]);
+        runtime.block_on(async {
+            assert!(store.is_private(Path::new("test.txt")).await.unwrap());
+            assert!(store.is_private(Path::new("secret.png")).await.unwrap());
+
+            let entry = store.get_entry(Path::new("test.txt")).await.unwrap().unwrap();
+            assert_eq!(entry.authorized_emails, vec!["a@b.com"]);
+        });
     }
 
     #[test]
@@ -105,14 +141,22 @@ mod tests {
         .unwrap();
 
         let store = setup_store(dir.path());
-        assert!(!store.is_private(Path::new("other.txt")).unwrap());
+        let runtime = rt();
+
+        runtime.block_on(async {
+            assert!(!store.is_private(Path::new("other.txt")).await.unwrap());
+        });
     }
 
     #[test]
     fn test_is_private_no_index() {
         let dir = tempdir().unwrap();
         let store = setup_store(dir.path());
-        assert!(!store.is_private(Path::new("test.txt")).unwrap());
+        let runtime = rt();
+
+        runtime.block_on(async {
+            assert!(!store.is_private(Path::new("test.txt")).await.unwrap());
+        });
     }
 
     #[test]
@@ -122,7 +166,11 @@ mod tests {
         fs::write(&index_file, r#"{"entries": []}"#).unwrap();
 
         let store = setup_store(dir.path());
-        assert!(!store.is_private(Path::new("test.txt")).unwrap());
+        let runtime = rt();
+
+        runtime.block_on(async {
+            assert!(!store.is_private(Path::new("test.txt")).await.unwrap());
+        });
     }
 
     #[test]
@@ -132,6 +180,10 @@ mod tests {
         fs::write(&index_file, r#"{"entries": [{"path": "test.txt"}"#).unwrap();
 
         let store = setup_store(dir.path());
-        assert!(store.is_private(Path::new("test.txt")).is_err());
+        let runtime = rt();
+
+        runtime.block_on(async {
+            assert!(store.is_private(Path::new("test.txt")).await.is_err());
+        });
     }
 }

@@ -46,10 +46,13 @@ impl Folio {
 
         let full_path = base.join(normalized);
 
-        // Try to canonicalize to get a clean absolute path
-        // If file doesn't exist yet, try to clean up the base part at least
-        if let Ok(p) = full_path.canonicalize() {
-            return p;
+        // Only call canonicalize() when path exists — it's an expensive syscall
+        // (resolves symlinks, hits the filesystem). For new uploads, the path
+        // won't exist yet so skip straight to the cheap fallback.
+        if full_path.exists() {
+            if let Ok(p) = full_path.canonicalize() {
+                return p;
+            }
         }
 
         // Fallback: manually clean up CurDir (.) components

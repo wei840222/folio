@@ -35,7 +35,7 @@ impl ExpiryStore {
         }
     }
 
-    pub fn schedule(&self, path: &Path, ttl: Duration) -> Result<(), String> {
+    pub async fn schedule(&self, path: &Path, ttl: Duration) -> Result<(), String> {
         if !path.starts_with(&self.uploads_root) {
             return Err(format!(
                 "refuse to schedule path outside uploads root: {}",
@@ -43,9 +43,8 @@ impl ExpiryStore {
             ));
         }
 
-        let _guard = self.store.lock()?;
-        let mut index = self.store.load()?;
-
+        let _guard = self.store.lock().await?;
+        let mut index = self.store.load().await?;
         let normalized = path.to_string_lossy().to_string();
         index.entries.retain(|entry| entry.path != normalized);
         index.entries.push(ExpiryEntry {
@@ -53,21 +52,24 @@ impl ExpiryStore {
             expire_at_unix: now_unix_secs().saturating_add(ttl.as_secs()),
         });
 
-        self.store.save(&index)
+        self.store.save(&index).await
     }
 
     pub fn spawn_sweeper(self: std::sync::Arc<Self>, interval: Duration) {
-        std::thread::spawn(move || loop {
-            std::thread::sleep(interval);
-            if let Err(err) = self.sweep_once() {
-                log::error!("expiry sweep failed: {}", err);
+        std::thread::spawn(move || {
+            let rt = tokio::runtime::Runtime::new().unwrap();
+            loop {
+                std::thread::sleep(interval);
+                if let Err(err) = rt.block_on(self.sweep_once()) {
+                    log::error!("expiry sweep failed: {}", err);
+                }
             }
         });
     }
 
-    fn sweep_once(&self) -> Result<(), String> {
-        let _guard = self.store.lock()?;
-        let mut index = self.store.load()?;
+    async fn sweep_once(&self) -> Result<(), String> {
+        let _guard = self.store.lock().await?;
+        let mut index = self.store.load().await?;
         let now = now_unix_secs();
 
         let mut kept = Vec::with_capacity(index.entries.len());
@@ -87,7 +89,7 @@ impl ExpiryStore {
             }
 
             if target.exists() {
-                match std::fs::remove_file(&target) {
+                match tokio::fs::remove_file(&target).await {
                     Ok(_) => log::info!("expired file deleted: {}", target.display()),
                     Err(err) => {
                         log::error!(
@@ -101,7 +103,7 @@ impl ExpiryStore {
         }
 
         index.entries = kept;
-        self.store.save(&index)
+        self.store.save(&index).await
     }
 }
 
@@ -126,17 +128,15 @@ mod tests {
         ExpiryStore::new(&config)
     }
 
-    #[test]
-    fn schedule_writes_expiry_index() {
+    #[tokio::test]
+    async fn schedule_writes_expiry_index() {
         let temp_dir = tempfile::tempdir().unwrap();
         let store = test_store(&temp_dir);
 
         let file_path = temp_dir.path().join("hello.txt");
         std::fs::write(&file_path, "hello").unwrap();
 
-        store
-            .schedule(&file_path, Duration::from_secs(120))
-            .unwrap();
+        store.schedule(&file_path, Duration::from_secs(120)).await.unwrap();
 
         let index_path = temp_dir.path().join("expiry-index.json");
         assert!(index_path.exists());
@@ -147,17 +147,17 @@ mod tests {
         assert_eq!(index.entries[0].path, file_path.to_string_lossy());
     }
 
-    #[test]
-    fn sweep_once_deletes_expired_file_and_prunes_entry() {
+    #[tokio::test]
+    async fn sweep_once_deletes_expired_file_and_prunes_entry() {
         let temp_dir = tempfile::tempdir().unwrap();
         let store = test_store(&temp_dir);
 
         let file_path = temp_dir.path().join("expired.txt");
         std::fs::write(&file_path, "bye").unwrap();
 
-        store.schedule(&file_path, Duration::from_secs(0)).unwrap();
-        std::thread::sleep(Duration::from_secs(1));
-        store.sweep_once().unwrap();
+        store.schedule(&file_path, Duration::from_secs(0)).await.unwrap();
+        tokio::time::sleep(Duration::from_secs(1)).await;
+        store.sweep_once().await.unwrap();
 
         assert!(!file_path.exists());
 

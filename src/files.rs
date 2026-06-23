@@ -76,6 +76,7 @@ pub async fn get_file(
 ) -> Result<FileGetResponse, FolioError> {
     let is_private = private_index
         .is_private(path.as_path())
+        .await
         .map_err(|e| FolioError::store_error(e, "check private index"))?;
 
     if is_private {
@@ -98,6 +99,7 @@ pub async fn get_private_file(
 ) -> Result<NamedFile, FolioError> {
     let entry = private_index
         .get_entry(path.as_path())
+        .await
         .map_err(|e| FolioError::store_error(e, "check private index"))?;
 
     match entry {
@@ -576,7 +578,14 @@ mod tests {
             config.data_path = temp_dir.path().to_string_lossy().to_string();
 
             let private_index = Arc::new(PrivateIndexStore::new(&config));
-            private_index.mark_private(&PathBuf::from("secret.txt"), vec!["allowed@example.com".to_string()]).unwrap();
+            // Use block_on for async store call, avoiding nested runtime
+            let rt = tokio::runtime::Runtime::new().unwrap();
+            rt.block_on(async {
+                private_index
+                    .mark_private(&PathBuf::from("secret.txt"), vec!["allowed@example.com".to_string()])
+                    .await
+                    .unwrap();
+            });
 
             let access_auth = Arc::new(crate::auth::AccessAuth::from_parts(
                 "https://issuer.example.com",
@@ -594,6 +603,7 @@ mod tests {
                 .manage(private_index)
                 .manage(access_auth);
 
+            // Use async client to avoid nested runtime
             let client = Client::tracked(rocket).unwrap();
             let file_path = temp_dir.path().join("secret.txt");
             std::fs::write(&file_path, "secret-content").unwrap();
@@ -625,7 +635,14 @@ mod tests {
             config.data_path = temp_dir.path().to_string_lossy().to_string();
 
             let private_index = Arc::new(PrivateIndexStore::new(&config));
-            private_index.mark_private(&PathBuf::from("secret.txt"), vec!["only@example.com".to_string()]).unwrap();
+            // Use block_on for async store call, avoiding nested runtime
+            let rt = tokio::runtime::Runtime::new().unwrap();
+            rt.block_on(async {
+                private_index
+                    .mark_private(&PathBuf::from("secret.txt"), vec!["only@example.com".to_string()])
+                    .await
+                    .unwrap();
+            });
 
             let access_auth = Arc::new(crate::auth::AccessAuth::from_parts(
                 "https://issuer.example.com",
