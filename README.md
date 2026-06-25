@@ -405,9 +405,3 @@ Docker images are pushed to: `registry-gitea.home-infra.weii.cloud/home-infra/fo
   - `data/expiry-index.json`
   - `data/private-files.json`
 - `garbage_collection_pattern` exists in config but GC cleanup is not implemented.
-
-## Related docs
-
-- Wiki Home: <https://gitea.home-infra.weii.cloud/home-infra/folio/wiki/Home>
-- Wiki Security Model: <https://gitea.home-infra.weii.cloud/home-infra/folio/wiki/Security-Model>
-- Wiki Roadmap: <https://gitea.home-infra.weii.cloud/home-infra/folio/wiki/Roadmap>
