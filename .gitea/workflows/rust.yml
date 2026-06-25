@@ -18,18 +18,18 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Install Protoc
         uses: arduino/setup-protoc@v3
         with:
-          version: "34.1"
+          version: "35.1"
           repo-token: ${{ secrets.GH_RATE_LIMIT_PAT }}
 
       - name: Setup Rust
         uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
-          toolchain: stable
+          toolchain: 1.96.0
 
       - name: Build
         run: cargo build --verbose
@@ -42,13 +42,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Trivy vulnerability scanner
         uses: aquasecurity/trivy-action@v0.36.0
         with:
           token-setup-trivy: ${{ secrets.GH_RATE_LIMIT_PAT }}
-          version: v0.70.0
+          version: v0.71.2
           scan-type: fs
           scan-ref: .
           format: table

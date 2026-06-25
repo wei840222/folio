@@ -6,7 +6,7 @@ use actix_multipart::Multipart;
 use actix_web::http::StatusCode;
 use actix_web::{HttpRequest, HttpResponse, Responder, delete, get, post, put, web};
 use futures_util::StreamExt;
-use serde::Serialize;
+use serde_json::json;
 use tokio::io::AsyncWriteExt;
 
 use super::auth::{AccessAuth, VerifiedIdentity};
@@ -14,19 +14,6 @@ use super::config;
 use super::error::FolioError;
 use super::path::SafePath;
 use super::private_index::PrivateIndexStore;
-
-#[derive(Serialize)]
-pub struct FileResponse {
-    message: String,
-}
-
-impl FileResponse {
-    fn success(message: &str) -> Self {
-        FileResponse {
-            message: message.to_string(),
-        }
-    }
-}
 
 /// Ensure parent directories exist.
 fn ensure_parent_dirs(path: &Path) -> Result<(), FolioError> {
@@ -222,8 +209,9 @@ pub async fn create_file(
 
     save_file_field(payload, &full_path).await?;
 
-    Ok(HttpResponse::build(StatusCode::CREATED)
-        .json(FileResponse::success("file created successfully")))
+    Ok(HttpResponse::build(StatusCode::CREATED).json(json!({
+        "message": "file created successfully"
+    })))
 }
 
 #[put("/files/{path:.*}")]
@@ -249,7 +237,7 @@ pub async fn upsert_file(
         "file created successfully"
     };
 
-    Ok(HttpResponse::build(status).json(FileResponse::success(message)))
+    Ok(HttpResponse::build(status).json(json!({ "message": message })))
 }
 
 #[delete("/files/{path:.*}")]
@@ -281,7 +269,9 @@ pub async fn delete_file(
         }
     })?;
 
-    Ok(HttpResponse::Ok().json(FileResponse::success("file deleted successfully")))
+    Ok(HttpResponse::Ok().json(json!({
+        "message": "file deleted successfully"
+    })))
 }
 
 #[cfg(test)]

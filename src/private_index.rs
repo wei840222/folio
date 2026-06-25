@@ -17,7 +17,6 @@ struct PrivateIndex {
 }
 
 pub struct PrivateIndexStore {
-    cache: std::sync::RwLock<std::collections::HashMap<String, bool>>,
     store: JsonFileStore<PrivateIndex>,
 }
 
@@ -25,7 +24,6 @@ impl PrivateIndexStore {
     pub fn new(config: &config::Folio) -> Self {
         let index_path = config.build_full_data_path(&PathBuf::from("private-files.json"));
         Self {
-            cache: std::sync::RwLock::new(std::collections::HashMap::new()),
             store: JsonFileStore::new(index_path),
         }
     }
@@ -45,11 +43,6 @@ impl PrivateIndexStore {
             authorized_emails,
         });
 
-        // Update cache
-        if let Ok(mut cache) = self.cache.write() {
-            cache.insert(normalized, true);
-        }
-
         self.store.save(&index).await
     }
 
@@ -63,26 +56,10 @@ impl PrivateIndexStore {
 
     pub async fn is_private(&self, relative_path: &Path) -> Result<bool, String> {
         let normalized = relative_path.to_string_lossy().to_string();
-
-        // Check cache first
-        if let Ok(cache) = self.cache.read()
-            && let Some(&is_priv) = cache.get(&normalized)
-        {
-            return Ok(is_priv);
-        }
-
-        // Cache miss - load from store
         let _guard = self.store.lock().await?;
         let index = self.store.load().await?;
 
-        let is_priv = index.entries.iter().any(|e| e.path == normalized);
-
-        // Update cache
-        if let Ok(mut cache) = self.cache.write() {
-            cache.insert(normalized, is_priv);
-        }
-
-        Ok(is_priv)
+        Ok(index.entries.iter().any(|e| e.path == normalized))
     }
 }
 
@@ -100,7 +77,6 @@ mod tests {
             web_path: "".to_string(),
             uploads_path: temp_path.to_str().unwrap().to_string(),
             data_path: temp_path.to_str().unwrap().to_string(),
-            garbage_collection_pattern: vec![],
         };
         PrivateIndexStore::new(&config)
     }

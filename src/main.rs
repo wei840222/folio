@@ -48,7 +48,6 @@ async fn main() -> std::io::Result<()> {
                 web_path: config.web_path.clone(),
                 uploads_path: config.uploads_path.clone(),
                 data_path: config.data_path.clone(),
-                garbage_collection_pattern: config.garbage_collection_pattern.clone(),
             }))
             .app_data(web::Data::new(expiry_store.clone()))
             .app_data(web::Data::new(private_index_store.clone()))

@@ -39,16 +39,3 @@ pub fn make_hs256_token(
     )
     .expect("failed to encode HS256 token")
 }
-
-// Keep this alias for clarity in tests
-pub fn make_hs256_token_with_aud_array(
-    secret: &str,
-    sub: &str,
-    email: Option<&str>,
-    groups: &[&str],
-    iss: &str,
-    aud: &[&str],
-    exp_offset_secs: i64,
-) -> String {
-    make_hs256_token(secret, sub, email, groups, iss, aud, exp_offset_secs)
-}

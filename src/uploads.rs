@@ -6,8 +6,8 @@ use actix_multipart::{Field, Multipart};
 use actix_web::http::StatusCode;
 use actix_web::{HttpResponse, Responder, post, web};
 use futures_util::StreamExt;
-use rand::Rng;
-use serde::Serialize;
+use rand::RngExt;
+use serde_json::json;
 use tokio::io::AsyncWriteExt;
 
 use super::config;
@@ -38,11 +38,6 @@ impl UploadId {
     pub fn file_name(&self, extension: Option<&str>) -> String {
         extension.map_or_else(|| self.0.clone(), |ext| format!("{}.{}", self.0, ext))
     }
-}
-
-#[derive(Serialize)]
-pub struct UploadResponse {
-    message: String,
 }
 
 #[derive(Default)]
@@ -109,9 +104,7 @@ pub async fn upload_file(
 
     Ok(HttpResponse::build(StatusCode::CREATED)
         .append_header(("Location", format!("/files/{}", file_name)))
-        .json(UploadResponse {
-            message: "file uploaded successfully".to_string(),
-        }))
+        .json(json!({ "message": "file uploaded successfully" })))
 }
 
 async fn save_upload_payload(

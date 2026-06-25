@@ -8,7 +8,6 @@ pub struct Folio {
     pub web_path: String,
     pub uploads_path: String,
     pub data_path: String,
-    pub garbage_collection_pattern: Vec<String>,
 }
 
 impl Folio {
@@ -74,10 +73,6 @@ impl Default for Folio {
             web_path: String::from("./web/dist"),
             uploads_path: String::from("./uploads"),
             data_path: String::from("./data"),
-            garbage_collection_pattern: vec![
-                String::from(r#"^\._.+"#),
-                String::from(r#"^\.DS_Store$"#),
-            ],
         }
     }
 }
@@ -93,7 +88,6 @@ mod tests {
         assert_eq!(config.port, 8000);
         assert_eq!(config.web_path, "./web/dist");
         assert_eq!(config.uploads_path, "./uploads");
-        assert_eq!(config.garbage_collection_pattern.len(), 2);
     }
 
     mod build_full_upload_path {
@@ -157,7 +151,6 @@ mod tests {
                 web_path: String::from("./web"),
                 uploads_path: String::from("./custom_uploads"),
                 data_path: String::from("./data"),
-                garbage_collection_pattern: vec![],
             };
             let path = config.build_full_upload_path(&PathBuf::from("test.txt"));
 
@@ -183,7 +176,6 @@ mod tests {
                 web_path: String::from("./web"),
                 uploads_path: String::from("/tmp/test_uploads"),
                 data_path: String::from("./data"),
-                garbage_collection_pattern: vec![],
             };
             let path = config.build_full_upload_path(&PathBuf::from("test.txt"));
 

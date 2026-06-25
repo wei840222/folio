@@ -467,13 +467,11 @@ mod tests {
 
     #[test]
     fn verify_hs256_aud_array_success() {
-        use crate::test_utils::make_hs256_token_with_aud_array;
-
         let secret = "test-secret";
         let auth = AccessAuth::from_parts("https://issuer.example.com", "folio-app", Some(secret));
 
         // Cloudflare Access sends aud as array
-        let token = make_hs256_token_with_aud_array(
+        let token = make_hs256_token(
             secret,
             "user-1",
             Some("allowed@example.com"),

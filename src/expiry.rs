@@ -123,7 +123,6 @@ mod tests {
             web_path: "./web/dist".to_string(),
             uploads_path: temp_dir.path().to_string_lossy().to_string(),
             data_path: temp_dir.path().to_string_lossy().to_string(),
-            garbage_collection_pattern: vec![],
         };
         ExpiryStore::new(&config)
     }

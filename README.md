@@ -25,13 +25,13 @@ A lightweight file storage server with a web interface, local expiry sweeper, an
 - **Local expiry index + sweeper**: expiration is tracked in `data/expiry-index.json` and cleaned by an in-process background sweeper.
 - **Private file redirect flow**: private-index (tracked in `data/private-files.json`) matches on `/files/:path` redirect to `/private-files/:path`.
 - **Cloudflare Access verification**: `/private-files/:path` verifies `Cf-Access-Jwt-Assertion` or standard `Authorization: Bearer *** JWT (RS256/JWKS with 1hr cache, or HS256 for local testing).
-- **Web interface**: React 19 + Vite + TypeScript + Tailwind CSS 4 upload UI with drag & drop, short URL generation, and one-click copy.
+- **Web interface**: Svelte 5 + Vite + TypeScript + Tailwind CSS 4 upload UI with drag & drop, short URL generation, and one-click copy.
 
 ## Architecture
 
 ```mermaid
 flowchart TD
-    subgraph frontend["Web Frontend (React 19)"]
+    subgraph frontend["Web Frontend (Svelte 5)"]
         direction LR
         FE1[FileUploadZone] -->|POST /uploads| FE2[DownloadLink]
         FE_DESC["Vite + TypeScript + Tailwind CSS 4"]
@@ -67,7 +67,7 @@ flowchart TD
 | Layer | Technology |
 |-------|-----------|
 | Backend | Rust 2024 edition, Actix Web 4, Figment (config), jsonwebtoken, reqwest |
-| Frontend | React 19, Vite, TypeScript, Tailwind CSS 4, Radix UI, Lucide icons |
+| Frontend | Svelte 5, Vite, TypeScript, Tailwind CSS 4, Lucide icons |
 | Storage | Local filesystem (`uploads/`) + JSON indices (`data/`) |
 | Auth | Cloudflare Access JWT (RS256/JWKS or HS256) |
 | CI/CD | Gitea Actions (Rust test + Trivy scan + Docker build-push) |
@@ -77,7 +77,7 @@ flowchart TD
 ### Prerequisites
 
 - [Rust and Cargo](https://rustup.rs/) (2024 edition)
-- [Bun](https://bun.sh/) (for frontend development)
+- [Node.js](https://nodejs.org/) 20+ and [pnpm](https://pnpm.io/) (for frontend development)
 
 ### Running the Server
 
@@ -329,14 +329,14 @@ cargo test
 ```bash
 cd web
 
-# Install dependencies (requires Bun)
-bun install
+# Install dependencies (requires pnpm)
+pnpm install
 
 # Development server with hot reload
-bun dev
+pnpm dev
 
 # Production build
-bun run dist
+pnpm run build
 ```
 
 ### Project Structure
@@ -352,12 +352,12 @@ folio/
 │   ├── expiry.rs          # Background sweeper for file expiration
 │   ├── private_index.rs   # Private file metadata (authorized emails)
 │   └── test_utils.rs      # Test helpers
-├── web/                   # React frontend
+├── web/                   # Svelte frontend
 │   ├── src/
-│   │   ├── App.tsx        # Main upload UI
-│   │   ├── components/    # UI components (FileUploadZone, DownloadLink)
-│   │   └── lib/           # Utilities
+│   │   ├── App.svelte     # Main upload UI
+│   │   └── components/    # UI components (FileUploadZone, DownloadLink)
 │   ├── package.json
+│   ├── svelte.config.js
 │   └── vite.config.ts
 ├── data/                  # Runtime data (created at runtime)
 │   ├── expiry-index.json  # File expiration tracking
@@ -366,7 +366,7 @@ folio/
 ├── .gitea/workflows/      # CI/CD pipelines
 │   ├── rust.yml           # Rust test + Trivy scan
 │   └── docker.yml         # Docker build + push
-└── Dockerfile             # Multi-stage build (Bun + Rust)
+└── Dockerfile             # Multi-stage build (pnpm + Rust)
 ```
 
 ## CI/CD
@@ -404,4 +404,3 @@ Docker images are pushed to: `registry-gitea.home-infra.weii.cloud/home-infra/fo
 - Local persistent data files:
   - `data/expiry-index.json`
   - `data/private-files.json`
-- `garbage_collection_pattern` exists in config but GC cleanup is not implemented.

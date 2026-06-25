@@ -10,7 +10,7 @@
 |--------|-------|
 | **Type** | Self-hosted file storage + sharing service |
 | **Backend** | Rust 2024 edition, Actix Web 4 |
-| **Frontend** | React 19, Vite, TypeScript, Tailwind CSS 4 |
+| **Frontend** | Svelte 5, Vite, TypeScript, Tailwind CSS 4 |
 | **Auth** | Cloudflare Access JWT (RS256/JWKS or HS256) |
 | **Storage** | Local filesystem + JSON indices |
 | **Config** | Figment (TOML + env vars with `FOLIO_` prefix) |
@@ -31,16 +31,19 @@ folio/
 │   ├── expiry.rs                 # Background sweeper (60s interval), ExpiryStore
 │   ├── private_index.rs          # Private file authorization, PrivateIndexStore
 │   └── test_utils.rs             # Test helpers (#[cfg(test)])
-├── web/                          # React frontend
+├── web/                          # Svelte frontend
 │   ├── src/
-│   │   ├── App.tsx               # Main upload UI
+│   │   ├── App.svelte            # Main upload UI
 │   │   ├── components/
-│   │   │   ├── FileUploadZone.tsx # Drag & drop upload
-│   │   │   ├── DownloadLink.tsx   # Short URL display + copy
-│   │   │   └── ui/               # shadcn/ui primitives (Button, Card, Input, Label)
-│   │   └── lib/utils.ts          # cn() helper (clsx + tailwind-merge)
-│   ├── package.json              # bun install, bun dev, bun run dist
-│   └── vite.config.ts
+│   │   │   ├── FileUploadZone.svelte # Drag & drop upload
+│   │   │   └── DownloadLink.svelte   # Short URL display + copy
+│   │   ├── main.ts               # Entry point (Svelte mount)
+│   │   ├── app.css               # Tailwind CSS imports
+│   │   └── app.d.ts              # Svelte type declarations
+│   ├── package.json              # pnpm install, pnpm dev, pnpm run build
+│   ├── vite.config.ts            # Vite + Svelte + Tailwind config
+│   ├── svelte.config.js          # Svelte preprocessor config
+│   └── tsconfig.json             # TypeScript config
 ├── data/                         # Runtime data (created at runtime)
 │   ├── expiry-index.json         # File expiration tracking
 │   └── private-files.json        # Private file authorization lists
@@ -48,7 +51,7 @@ folio/
 ├── .gitea/workflows/             # CI/CD pipelines
 │   ├── rust.yml                  # Build + test + Trivy scan
 │   └── docker.yml                # Docker build + Trivy + push
-├── Dockerfile                    # Multi-stage: oven/bun (web) + rust (backend) → debian
+├── Dockerfile                    # Multi-stage: node/pnpm (web) + rust (backend) → debian
 └── Cargo.toml                    # Dependencies: actix-web, actix-files, actix-multipart, figment, jsonwebtoken, reqwest
 ```
 
@@ -65,7 +68,7 @@ folio/
 | `PUT` | `/files/<path>` | `files::upsert_file()` | Create or overwrite |
 | `DELETE` | `/files/<path>` | `files::delete_file()` | Delete file |
 | `GET` | `/private-files/<path>` | `files::get_private_file()` | JWT-protected download |
-| `GET` | `/` | `FileServer` | Serve React SPA static assets |
+| `GET` | `/` | `FileServer` | Serve Svelte SPA static assets |
 
 ---
 
@@ -116,7 +119,7 @@ email ∈ authorized_emails?
 
 | Key | Env Var | Default | Description |
 |-----|---------|---------|-------------|
-| `web_path` | `FOLIO_WEB_PATH` | `./web/dist` | React build output path |
+| `web_path` | `FOLIO_WEB_PATH` | `./web/dist` | Svelte build output path |
 | `uploads_path` | `FOLIO_UPLOADS_PATH` | `./uploads` | Uploaded files storage |
 | `data_path` | `FOLIO_DATA_PATH` | `./data` | JSON index files location |
 
@@ -204,25 +207,22 @@ cargo fmt
 cargo clippy
 ```
 
-### Frontend (React + Vite)
+### Frontend (Svelte + Vite)
 
 ```bash
 cd web
 
 # Install dependencies
-bun install
+pnpm install
 
 # Dev server with hot reload
-bun dev
+pnpm dev
 
 # Production build → dist/
-bun run dist
+pnpm run build
 
 # Type check
-bun run type-check  # or tsc --noEmit
-
-# Lint
-bun run lint
+pnpm run check  # or svelte-check --tsconfig ./tsconfig.app.json
 ```
 
 ### Docker

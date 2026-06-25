@@ -20,7 +20,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Configure Docker Buildx
         uses: docker/setup-buildx-action@v4
@@ -49,7 +49,7 @@ jobs:
         uses: aquasecurity/trivy-action@v0.36.0
         with:
           token-setup-trivy: ${{ secrets.GH_RATE_LIMIT_PAT }}
-          version: v0.70.0
+          version: v0.71.2
           scan-type: image
           image-ref: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${{ steps.build.outputs.digest }}
           format: table

@@ -85,16 +85,3 @@ impl ResponseError for FolioError {
         })
     }
 }
-
-/// Convert `Result<T, String>` from stores into `Result<T, FolioError>`.
-#[allow(dead_code)]
-pub trait StoreResultExt<T> {
-    fn store_context(self, context: &str) -> Result<T, FolioError>;
-}
-
-#[allow(dead_code)]
-impl<T> StoreResultExt<T> for Result<T, String> {
-    fn store_context(self, context: &str) -> Result<T, FolioError> {
-        self.map_err(|e| FolioError::store_error(e, context))
-    }
-}
