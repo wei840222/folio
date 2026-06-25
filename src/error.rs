@@ -1,7 +1,5 @@
-use rocket::http::Status;
-use rocket::response::{Responder, Response};
-use rocket::serde::Serialize;
-use std::io::Cursor;
+use actix_web::{HttpResponse, ResponseError, http::StatusCode};
+use serde::Serialize;
 
 /// Unified error type for all Folio operations.
 ///
@@ -9,26 +7,42 @@ use std::io::Cursor;
 /// with a single type that knows how to render itself as an HTTP response.
 #[derive(Debug)]
 pub enum FolioError {
-    NotFound { path: String },
-    Forbidden { reason: String },
-    Conflict { path: String },
-    BadRequest { reason: String },
-    Internal { source: String, context: Option<String> },
+    Unauthorized {
+        reason: String,
+    },
+    NotFound {
+        path: String,
+    },
+    Forbidden {
+        reason: String,
+    },
+    Conflict {
+        path: String,
+    },
+    BadRequest {
+        reason: String,
+    },
+    Internal {
+        source: String,
+        context: Option<String>,
+    },
 }
 
 impl FolioError {
-    pub fn status(&self) -> Status {
+    pub fn status(&self) -> StatusCode {
         match self {
-            Self::NotFound { .. } => Status::NotFound,
-            Self::Forbidden { .. } => Status::Forbidden,
-            Self::Conflict { .. } => Status::Conflict,
-            Self::BadRequest { .. } => Status::BadRequest,
-            Self::Internal { .. } => Status::InternalServerError,
+            Self::Unauthorized { .. } => StatusCode::UNAUTHORIZED,
+            Self::NotFound { .. } => StatusCode::NOT_FOUND,
+            Self::Forbidden { .. } => StatusCode::FORBIDDEN,
+            Self::Conflict { .. } => StatusCode::CONFLICT,
+            Self::BadRequest { .. } => StatusCode::BAD_REQUEST,
+            Self::Internal { .. } => StatusCode::INTERNAL_SERVER_ERROR,
         }
     }
 
     pub fn message(&self) -> String {
         match self {
+            Self::Unauthorized { reason } => reason.clone(),
             Self::NotFound { path } => format!("file not found: {}", path),
             Self::Forbidden { reason } => reason.clone(),
             Self::Conflict { path } => format!("file already exists: {}", path),
@@ -50,24 +64,25 @@ impl FolioError {
 }
 
 #[derive(Serialize)]
-#[serde(crate = "rocket::serde")]
 struct ErrorResponse {
     message: String,
 }
 
-impl<'r> Responder<'r, 'static> for FolioError {
-    fn respond_to(self, _req: &'r rocket::Request<'_>) -> rocket::response::Result<'static> {
-        let status = self.status();
-        let body = serde_json::to_string(&ErrorResponse {
+impl std::fmt::Display for FolioError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.message())
+    }
+}
+
+impl ResponseError for FolioError {
+    fn status_code(&self) -> StatusCode {
+        self.status()
+    }
+
+    fn error_response(&self) -> HttpResponse {
+        HttpResponse::build(self.status()).json(ErrorResponse {
             message: self.message(),
         })
-        .unwrap_or_else(|_| r#"{"message":"unknown error"}"#.to_string());
-
-        Response::build()
-            .status(status)
-            .header(rocket::http::ContentType::JSON)
-            .sized_body(body.len(), Cursor::new(body))
-            .ok()
     }
 }
 

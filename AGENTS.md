@@ -9,7 +9,7 @@
 | Aspect | Value |
 |--------|-------|
 | **Type** | Self-hosted file storage + sharing service |
-| **Backend** | Rust 2024 edition, Rocket 0.5.1 |
+| **Backend** | Rust 2024 edition, Actix Web 4 |
 | **Frontend** | React 19, Vite, TypeScript, Tailwind CSS 4 |
 | **Auth** | Cloudflare Access JWT (RS256/JWKS or HS256) |
 | **Storage** | Local filesystem + JSON indices |
@@ -26,7 +26,7 @@ folio/
 │   ├── main.rs                   # Entry point, route mounting, managed state
 │   ├── config.rs                 # Figment config (TOML + env), path normalization
 │   ├── auth.rs                   # JWT validation (RS256/JWKS + HS256), VerifiedIdentity guard
-│   ├── files.rs                  # File CRUD (GET/POST/PUT/DELETE), ValidatedPath
+│   ├── files.rs                  # File CRUD (GET/POST/PUT/DELETE), SafePath validation
 │   ├── uploads.rs                # Random 8-char filename, multipart upload, TTL scheduling
 │   ├── expiry.rs                 # Background sweeper (60s interval), ExpiryStore
 │   ├── private_index.rs          # Private file authorization, PrivateIndexStore
@@ -49,7 +49,7 @@ folio/
 │   ├── rust.yml                  # Build + test + Trivy scan
 │   └── docker.yml                # Docker build + Trivy + push
 ├── Dockerfile                    # Multi-stage: oven/bun (web) + rust (backend) → debian
-└── Cargo.toml                    # Dependencies: rocket, figment, jsonwebtoken, reqwest
+└── Cargo.toml                    # Dependencies: actix-web, actix-files, actix-multipart, figment, jsonwebtoken, reqwest
 ```
 
 ---
@@ -73,14 +73,14 @@ folio/
 
 ### Path Normalization (Defense in Depth)
 
-1. **`ValidatedPath`** (`files.rs`): Rejects `..` in URL segments at Rocket parsing level
+1. **`SafePath` validation** (`path.rs` + `files.rs`): Rejects `..` and non-normal URL path components before filesystem access
 2. **`config::Folio::normalize_and_join()`** (`config.rs`): Strips `..`, `.`, root components; only `Normal` components kept
 
 **When modifying**: Always use `build_full_upload_path()` or `build_full_data_path()` — never join paths manually.
 
 ### JWT Authentication
 
-- **Request Guard**: `VerifiedIdentity` (`auth.rs:205`) implements `FromRequest`
+- **Request Helper**: `VerifiedIdentity::from_request()` extracts and verifies tokens from Actix `HttpRequest`
 - **Token Sources**: `Cf-Access-Jwt-Assertion` header (priority) OR `Authorization: Bearer ***
 - **Verify Modes**:
   - **RS256 + JWKS**: Production. Fetches from Cloudflare, caches 1hr in `Mutex<Option<(JwkSet, Instant)>>`
@@ -245,13 +245,13 @@ docker run -p 8080:8080 \
 ### Adding a New Route
 
 1. **Create handler** in appropriate module (`files.rs`, `uploads.rs`, or new module)
-2. **Mount route** in `main.rs:rocket()`:
+2. **Register route** in `main.rs` inside `HttpServer::new(...)`:
    ```rust
-   .mount("/new-prefix", routes![new_handler])
+   .service(new_handler)
    ```
 3. **Add managed state** if needed:
    ```rust
-   .manage(new_state)
+   .app_data(web::Data::new(new_state))
    ```
 4. **Update Cloudflare WAF rules** if the route needs write protection
 
@@ -272,7 +272,7 @@ docker run -p 8080:8080 \
 
 1. **JWT Claims**: Update `AccessClaims` struct in `auth.rs`
 2. **Verify Logic**: Modify `verify_claims()` — **both** RS256 and HS256 branches
-3. **Request Guard**: Update `VerifiedIdentity::from_request()` if header extraction changes
+3. **Request Helper**: Update `VerifiedIdentity::from_request()` if header extraction changes
 4. **Update tests** in `auth.rs:mod tests`
 
 ### Adding Frontend Component
@@ -292,7 +292,7 @@ docker run -p 8080:8080 \
    - Private marking (`private_store.mark_private()`)
    - Expiry scheduling (`expiry_store.schedule()`)
 2. **Form fields**: Update `UploadForm` struct
-3. **Query params**: Add to function signature (Rocket extracts automatically)
+3. **Query params**: Add a `serde::Deserialize` query struct and extract it with `web::Query<T>`
 
 ---
 
@@ -302,7 +302,7 @@ docker run -p 8080:8080 \
 
 - ❌ **Never** use `PathBuf::join()` directly with user input
 - ✅ **Always** use `config.build_full_upload_path()` or `build_full_data_path()`
-- ✅ **Always** wrap user-provided paths in `ValidatedPath` for route params
+- ✅ **Always** validate user-provided route paths with `SafePath::from_user_input()`
 
 ### JWT Testing
 
@@ -313,7 +313,7 @@ docker run -p 8080:8080 \
 ### Background Sweeper
 
 - Runs in **separate thread** (not async task) — uses `std::thread::spawn()`
-- Interval: **60 seconds** (hardcoded in `main.rs:rocket()`)
+- Interval: **60 seconds** (hardcoded in `main.rs`)
 - Uses `Mutex<()>` to prevent race conditions on index file
 
 ### File Extension Detection

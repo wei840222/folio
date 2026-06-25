@@ -1,9 +1,10 @@
-use rocket::serde::{Deserialize, Serialize};
-use std::path::{Component, PathBuf};
+use serde::{Deserialize, Serialize};
+use std::path::{Component, Path, PathBuf};
 
 #[derive(Debug, Deserialize, Serialize)]
-#[serde(crate = "rocket::serde")]
 pub struct Folio {
+    pub address: String,
+    pub port: u16,
     pub web_path: String,
     pub uploads_path: String,
     pub data_path: String,
@@ -23,23 +24,22 @@ impl Folio {
     }
 
     /// Build full file path for uploads with normalized path
-    pub fn build_full_upload_path(&self, relative_path: &PathBuf) -> PathBuf {
+    pub fn build_full_upload_path(&self, relative_path: &Path) -> PathBuf {
         self.normalize_and_join(&self.resolve_base(&self.uploads_path), relative_path)
     }
 
     /// Build full file path for persistent data
-    pub fn build_full_data_path(&self, relative_path: &PathBuf) -> PathBuf {
+    pub fn build_full_data_path(&self, relative_path: &Path) -> PathBuf {
         self.normalize_and_join(&self.resolve_base(&self.data_path), relative_path)
     }
 
-    fn normalize_and_join(&self, base: &PathBuf, relative_path: &PathBuf) -> PathBuf {
+    fn normalize_and_join(&self, base: &Path, relative_path: &Path) -> PathBuf {
         // Normalize the relative path to prevent directory traversal
         let normalized = relative_path
             .components()
             .fold(PathBuf::new(), |mut path, component| {
-                match component {
-                    Component::Normal(c) => path.push(c),
-                    _ => {} // Ignore CurDir, ParentDir, Prefix, RootDir
+                if let Component::Normal(c) = component {
+                    path.push(c);
                 }
                 path
             });
@@ -49,10 +49,10 @@ impl Folio {
         // Only call canonicalize() when path exists — it's an expensive syscall
         // (resolves symlinks, hits the filesystem). For new uploads, the path
         // won't exist yet so skip straight to the cheap fallback.
-        if full_path.exists() {
-            if let Ok(p) = full_path.canonicalize() {
-                return p;
-            }
+        if full_path.exists()
+            && let Ok(p) = full_path.canonicalize()
+        {
+            return p;
         }
 
         // Fallback: manually clean up CurDir (.) components
@@ -66,9 +66,11 @@ impl Folio {
     }
 }
 
-impl<'r> Default for Folio {
+impl Default for Folio {
     fn default() -> Folio {
         Folio {
+            address: String::from("127.0.0.1"),
+            port: 8000,
             web_path: String::from("./web/dist"),
             uploads_path: String::from("./uploads"),
             data_path: String::from("./data"),
@@ -87,6 +89,8 @@ mod tests {
     #[test]
     fn test_default_config() {
         let config = Folio::default();
+        assert_eq!(config.address, "127.0.0.1");
+        assert_eq!(config.port, 8000);
         assert_eq!(config.web_path, "./web/dist");
         assert_eq!(config.uploads_path, "./uploads");
         assert_eq!(config.garbage_collection_pattern.len(), 2);
@@ -148,6 +152,8 @@ mod tests {
         #[test]
         fn with_custom_uploads_path() {
             let config = Folio {
+                address: String::from("127.0.0.1"),
+                port: 8000,
                 web_path: String::from("./web"),
                 uploads_path: String::from("./custom_uploads"),
                 data_path: String::from("./data"),
@@ -172,6 +178,8 @@ mod tests {
         #[test]
         fn absolute_path_ignores_current_dir() {
             let config = Folio {
+                address: String::from("127.0.0.1"),
+                port: 8000,
                 web_path: String::from("./web"),
                 uploads_path: String::from("/tmp/test_uploads"),
                 data_path: String::from("./data"),
@@ -184,7 +192,9 @@ mod tests {
 
             // Should NOT contain current_dir
             let current_dir = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
-            assert!(!path.starts_with(&current_dir) || !path.to_string_lossy().contains("test_uploads"));
+            assert!(
+                !path.starts_with(&current_dir) || !path.to_string_lossy().contains("test_uploads")
+            );
         }
 
         #[test]

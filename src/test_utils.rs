@@ -23,7 +23,7 @@ pub fn make_hs256_token(
         now_ts().saturating_sub((-exp_offset_secs) as usize)
     };
 
-    let claims = rocket::serde::json::json!({
+    let claims = serde_json::json!({
         "sub": sub,
         "email": email,
         "groups": groups,

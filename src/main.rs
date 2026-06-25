@@ -5,34 +5,30 @@ mod expiry;
 mod files;
 mod path;
 mod private_index;
+mod store;
 #[cfg(test)]
 mod test_utils;
 mod uploads;
 
-use figment::providers::{Env, Format, Serialized, Toml};
-use rocket::fs::FileServer;
 use std::sync::Arc;
 use std::time::Duration;
 
-#[macro_use]
-extern crate rocket;
-extern crate log;
-extern crate pretty_env_logger;
+use actix_files::Files;
+use actix_web::{App, HttpResponse, HttpServer, get, web};
+use figment::Figment;
+use figment::providers::{Env, Format, Serialized, Toml};
 
-#[get("/")]
-fn health() -> &'static str {
+#[get("/health")]
+async fn health() -> &'static str {
     "OK"
 }
 
-#[launch]
-async fn rocket() -> _ {
+#[actix_web::main]
+async fn main() -> std::io::Result<()> {
     pretty_env_logger::init();
-    let figment = rocket::Config::figment()
-        .merge(Serialized::defaults(config::Folio::default()))
-        .merge(Toml::file("Folio.toml").nested())
-        .merge(Env::prefixed("FOLIO_").global());
 
-    let config: config::Folio = figment.extract().unwrap();
+    let mut config = load_config();
+    apply_rocket_compat_env(&mut config);
     log::info!("Using config: {:?}", config);
 
     let expiry_store = Arc::new(expiry::ExpiryStore::new(&config));
@@ -41,23 +37,59 @@ async fn rocket() -> _ {
     let private_index_store = Arc::new(private_index::PrivateIndexStore::new(&config));
     let access_auth = Arc::new(auth::AccessAuth::from_env());
 
-    rocket::custom(figment)
-        .mount("/health", routes![health])
-        .mount("/uploads", routes![uploads::upload_file])
-        .mount(
-            "/files",
-            routes![
-                files::get_file,
-                files::create_file,
-                files::upsert_file,
-                files::delete_file
-            ],
-        )
-        .mount("/private-files", routes![files::get_private_file])
-        .mount("/", FileServer::from(config.web_path.to_string()))
-        .manage(config)
-        .manage(expiry_store)
-        .manage(private_index_store)
-        .manage(access_auth)
+    let bind = (config.address.clone(), config.port);
+    let web_path = config.web_path.clone();
+
+    HttpServer::new(move || {
+        App::new()
+            .app_data(web::Data::new(config::Folio {
+                address: config.address.clone(),
+                port: config.port,
+                web_path: config.web_path.clone(),
+                uploads_path: config.uploads_path.clone(),
+                data_path: config.data_path.clone(),
+                garbage_collection_pattern: config.garbage_collection_pattern.clone(),
+            }))
+            .app_data(web::Data::new(expiry_store.clone()))
+            .app_data(web::Data::new(private_index_store.clone()))
+            .app_data(web::Data::new(access_auth.clone()))
+            .service(health)
+            .service(uploads::upload_file)
+            .service(files::get_file)
+            .service(files::create_file)
+            .service(files::upsert_file)
+            .service(files::delete_file)
+            .service(files::get_private_file)
+            .service(
+                Files::new("/", web_path.clone())
+                    .index_file("index.html")
+                    .default_handler(web::to(|| async { HttpResponse::NotFound().finish() })),
+            )
+    })
+    .bind(bind)?
+    .run()
+    .await
 }
-mod store;
+
+fn load_config() -> config::Folio {
+    Figment::from(Serialized::defaults(config::Folio::default()))
+        .merge(Toml::file("Folio.toml"))
+        .merge(Env::prefixed("FOLIO_").global())
+        .extract()
+        .unwrap()
+}
+
+fn apply_rocket_compat_env(config: &mut config::Folio) {
+    if std::env::var_os("FOLIO_ADDRESS").is_none()
+        && let Ok(address) = std::env::var("ROCKET_ADDRESS")
+    {
+        config.address = address;
+    }
+
+    if std::env::var_os("FOLIO_PORT").is_none()
+        && let Ok(port) = std::env::var("ROCKET_PORT")
+        && let Ok(port) = port.parse()
+    {
+        config.port = port;
+    }
+}

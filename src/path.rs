@@ -35,10 +35,7 @@ impl SafePath {
                         path.display()
                     );
                     return Err(FolioError::BadRequest {
-                        reason: format!(
-                            "invalid path component in: {}",
-                            path.to_string_lossy()
-                        ),
+                        reason: format!("invalid path component in: {}", path.to_string_lossy()),
                     });
                 }
             }

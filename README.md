@@ -37,7 +37,7 @@ flowchart TD
         FE_DESC["Vite + TypeScript + Tailwind CSS 4"]
     end
 
-    subgraph backend["Rust Backend (Rocket 0.5)"]
+    subgraph backend["Rust Backend (Actix Web 4)"]
         direction LR
         R1["/health"]
         R2["/uploads POST"]
@@ -66,7 +66,7 @@ flowchart TD
 
 | Layer | Technology |
 |-------|-----------|
-| Backend | Rust 2024 edition, Rocket 0.5, Figment (config), jsonwebtoken, reqwest |
+| Backend | Rust 2024 edition, Actix Web 4, Figment (config), jsonwebtoken, reqwest |
 | Frontend | React 19, Vite, TypeScript, Tailwind CSS 4, Radix UI, Lucide icons |
 | Storage | Local filesystem (`uploads/`) + JSON indices (`data/`) |
 | Auth | Cloudflare Access JWT (RS256/JWKS or HS256) |
@@ -93,18 +93,18 @@ RUST_LOG=info cargo run
 $env:RUST_LOG="info"; cargo run
 ```
 
-With custom upload limits:
+With custom bind settings:
 
 **Linux/macOS:**
 
 ```bash
-RUST_LOG=info ROCKET_LIMITS='{file="5 MiB"}' cargo run
+RUST_LOG=info FOLIO_ADDRESS=0.0.0.0 FOLIO_PORT=8080 cargo run
 ```
 
 **Windows (PowerShell):**
 
 ```powershell
-$env:RUST_LOG="info"; $env:ROCKET_LIMITS='{file="5 MiB"}'; cargo run
+$env:RUST_LOG="info"; $env:FOLIO_ADDRESS="0.0.0.0"; $env:FOLIO_PORT="8080"; cargo run
 ```
 
 ## Configuration
@@ -115,6 +115,8 @@ Configured with `Folio.toml` and/or environment variables.
 
 | Key            | Environment Variable | Default      | Description                            |
 | -------------- | -------------------- | ------------ | -------------------------------------- |
+| `address`      | `FOLIO_ADDRESS`      | `127.0.0.1`  | HTTP bind address                      |
+| `port`         | `FOLIO_PORT`         | `8000`       | HTTP bind port                         |
 | `web_path`     | `FOLIO_WEB_PATH`     | `./web/dist` | Path to static web assets              |
 | `uploads_path` | `FOLIO_UPLOADS_PATH` | `./uploads`  | Upload storage path                    |
 | `data_path`    | `FOLIO_DATA_PATH`    | `./data`     | Persistent metadata (index/state) path |

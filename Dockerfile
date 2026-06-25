@@ -65,11 +65,8 @@ RUN mkdir -p /opt/folio/data && chown ${uid}:${gid} /opt/folio/data
 RUN mkdir -p /opt/folio/tmp && chown ${uid}:${gid} /opt/folio/tmp
 
 ENV RUST_LOG=info
-ENV ROCKET_CLI_COLOR="true"
-ENV ROCKET_PORT="8080"
-ENV ROCKET_ADDRESS="0.0.0.0"
-ENV ROCKET_LIMITS='{file="15 MiB"}'
-ENV ROCKET_TMP_DIR="/opt/folio/tmp"
+ENV FOLIO_PORT="8080"
+ENV FOLIO_ADDRESS="0.0.0.0"
 ENV FOLIO_WEB_PATH="/opt/folio/web"
 ENV FOLIO_UPLOADS_PATH="/opt/folio/uploads"
 ENV FOLIO_DATA_PATH="/opt/folio/data"

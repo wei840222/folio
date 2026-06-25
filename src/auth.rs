@@ -1,13 +1,11 @@
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
+use actix_web::{HttpRequest, http::StatusCode, web};
 use jsonwebtoken::{
     Algorithm, DecodingKey, Validation, decode, decode_header, errors::ErrorKind as JwtErrorKind,
 };
 use reqwest::Client;
-use rocket::State;
-use rocket::http::Status;
-use rocket::request::{FromRequest, Outcome, Request};
 use serde::{Deserialize, Serialize};
 use tokio::sync::Mutex;
 
@@ -53,24 +51,22 @@ impl AccessAuthError {
         }
     }
 
-    pub fn status(&self) -> Status {
+    pub fn status(&self) -> StatusCode {
         match self {
-            Self::Unauthorized { .. } => Status::Unauthorized,
-            Self::Internal { .. } => Status::InternalServerError,
+            Self::Unauthorized { .. } => StatusCode::UNAUTHORIZED,
+            Self::Internal { .. } => StatusCode::INTERNAL_SERVER_ERROR,
         }
     }
 
     pub fn code(&self) -> &'static str {
         match self {
-            Self::Unauthorized { code, .. }
-            | Self::Internal { code, .. } => code,
+            Self::Unauthorized { code, .. } | Self::Internal { code, .. } => code,
         }
     }
 
     pub fn message(&self) -> &str {
         match self {
-            Self::Unauthorized { message, .. }
-            | Self::Internal { message, .. } => message,
+            Self::Unauthorized { message, .. } | Self::Internal { message, .. } => message,
         }
     }
 }
@@ -82,7 +78,9 @@ impl AccessAuth {
         let audience = std::env::var("FOLIO_CF_ACCESS_AUD").unwrap_or_else(|_| "".to_string());
 
         if audience.is_empty() {
-            log::warn!("FOLIO_CF_ACCESS_AUD is not set — all private file access will fail with 'audience_not_configured'");
+            log::warn!(
+                "FOLIO_CF_ACCESS_AUD is not set — all private file access will fail with 'audience_not_configured'"
+            );
         }
 
         let verify_mode = if let Ok(secret) = std::env::var("FOLIO_CF_ACCESS_HS256_SECRET") {
@@ -104,11 +102,7 @@ impl AccessAuth {
     }
 
     #[cfg(test)]
-    pub(crate) fn from_parts(
-        issuer: &str,
-        audience: &str,
-        hs256_secret: Option<&str>,
-    ) -> Self {
+    pub(crate) fn from_parts(issuer: &str, audience: &str, hs256_secret: Option<&str>) -> Self {
         let verify_mode = if let Some(secret) = hs256_secret {
             VerifyMode::Hs256 {
                 secret: secret.to_string(),
@@ -131,12 +125,7 @@ impl AccessAuth {
         // Check if cache is valid first
         let needs_fetch = {
             let cache = self.jwks_cache.lock().await;
-            match &*cache {
-                Some((_, timestamp)) if timestamp.elapsed() < Duration::from_secs(3600) => {
-                    false
-                }
-                _ => true,
-            }
+            !matches!(&*cache, Some((_, timestamp)) if timestamp.elapsed() < Duration::from_secs(3600))
         };
 
         if !needs_fetch {
@@ -149,7 +138,9 @@ impl AccessAuth {
 
         // Release lock before making HTTP request
         log::info!("fetching fresh jwks from {}", url);
-        let response = self.client.get(url)
+        let response = self
+            .client
+            .get(url)
             .send()
             .await
             .map_err(|e| format!("fetch jwks failed: {}", e))?;
@@ -194,8 +185,8 @@ impl AccessAuth {
         match &self.verify_mode {
             VerifyMode::Hs256 { secret } => {
                 let mut validation = Validation::new(Algorithm::HS256);
-                validation.set_issuer(&[self.issuer.clone()]);
-                validation.set_audience(&[self.audience.clone()]);
+                validation.set_issuer(std::slice::from_ref(&self.issuer));
+                validation.set_audience(std::slice::from_ref(&self.audience));
 
                 decode::<AccessClaims>(
                     jwt,
@@ -211,15 +202,15 @@ impl AccessAuth {
                 let kid = header.kid.clone();
 
                 let jwks = self.get_jwks(jwks_url).await.map_err(|e| {
-                    AccessAuthError::unauthorized("jwks_fetch_failed", format!("{}", e))
+                    AccessAuthError::unauthorized("jwks_fetch_failed", e.to_string())
                 })?;
                 let key = select_key(&jwks.keys, kid.as_deref()).map_err(|e| {
-                    AccessAuthError::unauthorized("jwk_selection_failed", format!("{}", e))
+                    AccessAuthError::unauthorized("jwk_selection_failed", e.to_string())
                 })?;
 
                 let mut validation = Validation::new(Algorithm::RS256);
-                validation.set_issuer(&[self.issuer.clone()]);
-                validation.set_audience(&[self.audience.clone()]);
+                validation.set_issuer(std::slice::from_ref(&self.issuer));
+                validation.set_audience(std::slice::from_ref(&self.audience));
 
                 let decoding_key =
                     DecodingKey::from_rsa_components(&key.n, &key.e).map_err(|e| {
@@ -239,58 +230,46 @@ impl AccessAuth {
 
 pub struct VerifiedIdentity(pub AccessIdentity);
 
-#[rocket::async_trait]
-impl<'r> FromRequest<'r> for VerifiedIdentity {
-    type Error = String;
-
-    async fn from_request(request: &'r Request<'_>) -> Outcome<Self, Self::Error> {
-        let auth = match request.guard::<&State<Arc<AccessAuth>>>().await {
-            Outcome::Success(state) => state,
-            Outcome::Error(_) | Outcome::Forward(_) => {
-                return Outcome::Error((
-                    Status::InternalServerError,
-                    "auth state unavailable".to_string(),
-                ));
-            }
-        };
-
+impl VerifiedIdentity {
+    pub async fn from_request(
+        request: &HttpRequest,
+        auth: &web::Data<Arc<AccessAuth>>,
+    ) -> Result<Self, AccessAuthError> {
         let token = request
             .headers()
-            .get_one("Cf-Access-Jwt-Assertion")
+            .get("Cf-Access-Jwt-Assertion")
+            .and_then(|h| h.to_str().ok())
             .or_else(|| {
                 request
                     .headers()
-                    .get_one("Authorization")
+                    .get("Authorization")
+                    .and_then(|h| h.to_str().ok())
                     .and_then(|h| h.strip_prefix("Bearer ").or(h.strip_prefix("bearer ")))
             });
 
-        let token = match token {
-            Some(token) => token,
-            None => {
-                log::warn!(
-                    "private auth deny: code=missing_token status=401 path={} method={}",
-                    request.uri(),
-                    request.method()
-                );
-                return Outcome::Error((
-                    Status::Unauthorized,
-                    "missing authorization header (Cf-Access-Jwt-Assertion or bearer_token)"
-                        .to_string(),
-                ));
-            }
-        };
+        let token = token.ok_or_else(|| {
+            log::warn!(
+                "private auth deny: code=missing_token status=401 path={} method={}",
+                request.uri(),
+                request.method()
+            );
+            AccessAuthError::unauthorized(
+                "missing_token",
+                "missing authorization header (Cf-Access-Jwt-Assertion or bearer_token)",
+            )
+        })?;
 
         match auth.verify_and_authorize(token).await {
-            Ok(identity) => Outcome::Success(VerifiedIdentity(identity)),
+            Ok(identity) => Ok(VerifiedIdentity(identity)),
             Err(err) => {
                 log::warn!(
                     "private auth deny: code={} status={} path={} method={}",
                     err.code(),
-                    err.status().code,
+                    err.status().as_u16(),
                     request.uri(),
                     request.method()
                 );
-                Outcome::Error((err.status(), err.message().to_string()))
+                Err(err)
             }
         }
     }
@@ -385,11 +364,7 @@ mod tests {
     #[test]
     fn verify_hs256_success() {
         let secret = "test-secret";
-        let auth = AccessAuth::from_parts(
-            "https://issuer.example.com",
-            "folio-app",
-            Some(secret),
-        );
+        let auth = AccessAuth::from_parts("https://issuer.example.com", "folio-app", Some(secret));
 
         let token = make_hs256_token(
             secret,
@@ -402,19 +377,14 @@ mod tests {
         );
 
         let rt = tokio::runtime::Runtime::new().unwrap();
-        let identity = rt.block_on(async {
-            auth.verify_and_authorize(&token).await.unwrap()
-        });
+        let identity = rt.block_on(async { auth.verify_and_authorize(&token).await.unwrap() });
         assert_eq!(identity.sub, "user-1");
     }
 
     #[test]
     fn verify_hs256_invalid_signature_returns_401() {
-        let auth = AccessAuth::from_parts(
-            "https://issuer.example.com",
-            "folio-app",
-            Some("secret-a"),
-        );
+        let auth =
+            AccessAuth::from_parts("https://issuer.example.com", "folio-app", Some("secret-a"));
 
         let token = make_hs256_token(
             "secret-b",
@@ -427,21 +397,15 @@ mod tests {
         );
 
         let rt = tokio::runtime::Runtime::new().unwrap();
-        let err = rt.block_on(async {
-            auth.verify_and_authorize(&token).await.unwrap_err()
-        });
-        assert_eq!(err.status(), Status::Unauthorized);
+        let err = rt.block_on(async { auth.verify_and_authorize(&token).await.unwrap_err() });
+        assert_eq!(err.status(), StatusCode::UNAUTHORIZED);
         assert_eq!(err.code(), "jwt_invalid_signature");
     }
 
     #[test]
     fn verify_hs256_wrong_issuer_returns_401() {
         let secret = "test-secret";
-        let auth = AccessAuth::from_parts(
-            "https://issuer.example.com",
-            "folio-app",
-            Some(secret),
-        );
+        let auth = AccessAuth::from_parts("https://issuer.example.com", "folio-app", Some(secret));
 
         let token = make_hs256_token(
             secret,
@@ -454,21 +418,15 @@ mod tests {
         );
 
         let rt = tokio::runtime::Runtime::new().unwrap();
-        let err = rt.block_on(async {
-            auth.verify_and_authorize(&token).await.unwrap_err()
-        });
-        assert_eq!(err.status(), Status::Unauthorized);
+        let err = rt.block_on(async { auth.verify_and_authorize(&token).await.unwrap_err() });
+        assert_eq!(err.status(), StatusCode::UNAUTHORIZED);
         assert_eq!(err.code(), "jwt_invalid_issuer");
     }
 
     #[test]
     fn verify_hs256_wrong_audience_returns_401() {
         let secret = "test-secret";
-        let auth = AccessAuth::from_parts(
-            "https://issuer.example.com",
-            "folio-app",
-            Some(secret),
-        );
+        let auth = AccessAuth::from_parts("https://issuer.example.com", "folio-app", Some(secret));
 
         let token = make_hs256_token(
             secret,
@@ -481,21 +439,15 @@ mod tests {
         );
 
         let rt = tokio::runtime::Runtime::new().unwrap();
-        let err = rt.block_on(async {
-            auth.verify_and_authorize(&token).await.unwrap_err()
-        });
-        assert_eq!(err.status(), Status::Unauthorized);
+        let err = rt.block_on(async { auth.verify_and_authorize(&token).await.unwrap_err() });
+        assert_eq!(err.status(), StatusCode::UNAUTHORIZED);
         assert_eq!(err.code(), "jwt_invalid_audience");
     }
 
     #[test]
     fn verify_hs256_expired_returns_401() {
         let secret = "test-secret";
-        let auth = AccessAuth::from_parts(
-            "https://issuer.example.com",
-            "folio-app",
-            Some(secret),
-        );
+        let auth = AccessAuth::from_parts("https://issuer.example.com", "folio-app", Some(secret));
 
         let token = make_hs256_token(
             secret,
@@ -508,10 +460,8 @@ mod tests {
         );
 
         let rt = tokio::runtime::Runtime::new().unwrap();
-        let err = rt.block_on(async {
-            auth.verify_and_authorize(&token).await.unwrap_err()
-        });
-        assert_eq!(err.status(), Status::Unauthorized);
+        let err = rt.block_on(async { auth.verify_and_authorize(&token).await.unwrap_err() });
+        assert_eq!(err.status(), StatusCode::UNAUTHORIZED);
         assert_eq!(err.code(), "jwt_expired");
     }
 
@@ -520,11 +470,7 @@ mod tests {
         use crate::test_utils::make_hs256_token_with_aud_array;
 
         let secret = "test-secret";
-        let auth = AccessAuth::from_parts(
-            "https://issuer.example.com",
-            "folio-app",
-            Some(secret),
-        );
+        let auth = AccessAuth::from_parts("https://issuer.example.com", "folio-app", Some(secret));
 
         // Cloudflare Access sends aud as array
         let token = make_hs256_token_with_aud_array(
@@ -538,9 +484,7 @@ mod tests {
         );
 
         let rt = tokio::runtime::Runtime::new().unwrap();
-        let identity = rt.block_on(async {
-            auth.verify_and_authorize(&token).await.unwrap()
-        });
+        let identity = rt.block_on(async { auth.verify_and_authorize(&token).await.unwrap() });
         assert_eq!(identity.sub, "user-1");
         assert_eq!(identity.email, Some("allowed@example.com".to_string()));
     }

@@ -1,19 +1,17 @@
 use std::path::{Path, PathBuf};
 
-use rocket::serde::{Deserialize, Serialize};
+use serde::{Deserialize, Serialize};
 
 use super::config;
 use super::store::JsonFileStore;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
-#[serde(crate = "rocket::serde")]
 pub struct PrivateEntry {
     pub path: String,
     pub authorized_emails: Vec<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Default)]
-#[serde(crate = "rocket::serde")]
 struct PrivateIndex {
     entries: Vec<PrivateEntry>,
 }
@@ -32,7 +30,11 @@ impl PrivateIndexStore {
         }
     }
 
-    pub async fn mark_private(&self, relative_path: &Path, authorized_emails: Vec<String>) -> Result<(), String> {
+    pub async fn mark_private(
+        &self,
+        relative_path: &Path,
+        authorized_emails: Vec<String>,
+    ) -> Result<(), String> {
         let _guard = self.store.lock().await?;
         let mut index = self.store.load().await?;
         let normalized = relative_path.to_string_lossy().to_string();
@@ -63,10 +65,10 @@ impl PrivateIndexStore {
         let normalized = relative_path.to_string_lossy().to_string();
 
         // Check cache first
-        if let Ok(cache) = self.cache.read() {
-            if let Some(&is_priv) = cache.get(&normalized) {
-                return Ok(is_priv);
-            }
+        if let Ok(cache) = self.cache.read()
+            && let Some(&is_priv) = cache.get(&normalized)
+        {
+            return Ok(is_priv);
         }
 
         // Cache miss - load from store
@@ -93,6 +95,8 @@ mod tests {
 
     fn setup_store(temp_path: &Path) -> PrivateIndexStore {
         let config = Folio {
+            address: "127.0.0.1".to_string(),
+            port: 8000,
             web_path: "".to_string(),
             uploads_path: temp_path.to_str().unwrap().to_string(),
             data_path: temp_path.to_str().unwrap().to_string(),
@@ -125,7 +129,11 @@ mod tests {
             assert!(store.is_private(Path::new("test.txt")).await.unwrap());
             assert!(store.is_private(Path::new("secret.png")).await.unwrap());
 
-            let entry = store.get_entry(Path::new("test.txt")).await.unwrap().unwrap();
+            let entry = store
+                .get_entry(Path::new("test.txt"))
+                .await
+                .unwrap()
+                .unwrap();
             assert_eq!(entry.authorized_emails, vec!["a@b.com"]);
         });
     }

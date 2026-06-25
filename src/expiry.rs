@@ -1,20 +1,18 @@
 use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-use rocket::serde::{Deserialize, Serialize};
+use serde::{Deserialize, Serialize};
 
 use super::config;
 use super::store::JsonFileStore;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
-#[serde(crate = "rocket::serde")]
 struct ExpiryEntry {
     path: String,
     expire_at_unix: u64,
 }
 
 #[derive(Debug, Serialize, Deserialize, Default)]
-#[serde(crate = "rocket::serde")]
 struct ExpiryIndex {
     entries: Vec<ExpiryEntry>,
 }
@@ -120,6 +118,8 @@ mod tests {
 
     fn test_store(temp_dir: &tempfile::TempDir) -> ExpiryStore {
         let config = config::Folio {
+            address: "127.0.0.1".to_string(),
+            port: 8000,
             web_path: "./web/dist".to_string(),
             uploads_path: temp_dir.path().to_string_lossy().to_string(),
             data_path: temp_dir.path().to_string_lossy().to_string(),
@@ -136,7 +136,10 @@ mod tests {
         let file_path = temp_dir.path().join("hello.txt");
         std::fs::write(&file_path, "hello").unwrap();
 
-        store.schedule(&file_path, Duration::from_secs(120)).await.unwrap();
+        store
+            .schedule(&file_path, Duration::from_secs(120))
+            .await
+            .unwrap();
 
         let index_path = temp_dir.path().join("expiry-index.json");
         assert!(index_path.exists());
@@ -155,7 +158,10 @@ mod tests {
         let file_path = temp_dir.path().join("expired.txt");
         std::fs::write(&file_path, "bye").unwrap();
 
-        store.schedule(&file_path, Duration::from_secs(0)).await.unwrap();
+        store
+            .schedule(&file_path, Duration::from_secs(0))
+            .await
+            .unwrap();
         tokio::time::sleep(Duration::from_secs(1)).await;
         store.sweep_once().await.unwrap();
 

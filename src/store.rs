@@ -48,8 +48,8 @@ where
                 .await
                 .map_err(|e| format!("create index dir failed: {}", e))?;
         }
-        let content = serde_json::to_string(data)
-            .map_err(|e| format!("serialize index failed: {}", e))?;
+        let content =
+            serde_json::to_string(data).map_err(|e| format!("serialize index failed: {}", e))?;
         let tmp_path = self.index_path.with_extension("json.tmp");
         tokio::fs::write(&tmp_path, content)
             .await
