@@ -132,7 +132,7 @@
                 檔案上傳
               </h2>
             </div>
-            <div class="postmark-stamp rotate-[-6deg] rounded-2xl border border-blue-600/20 bg-blue-100/50 px-3 py-2 text-xs font-black uppercase tracking-[0.22em] text-blue-700">
+            <div class="rounded-2xl border border-blue-600/20 bg-blue-100/50 px-3 py-2 text-xs font-black uppercase tracking-[0.22em] text-blue-700">
               sealed
             </div>
           </div>
@@ -153,8 +153,8 @@
                     <Download class="h-5 w-5" />
                   </div>
                   <div class="min-w-0">
-                    <div class="mb-1 inline-flex rotate-[-2deg] rounded-full border border-blue-600/20 bg-blue-100/50 px-2 py-0.5 text-[10px] font-black uppercase tracking-[0.22em] text-blue-700">
-                      ready seal
+                    <div class="mb-1 inline-flex rounded-full border border-blue-600/20 bg-blue-100/50 px-2 py-0.5 text-[10px] font-black uppercase tracking-[0.22em] text-blue-700">
+                      ready
                     </div>
                     <h3 class="truncate font-bold text-slate-900">
                       {shortUrl.split('/').pop()}
