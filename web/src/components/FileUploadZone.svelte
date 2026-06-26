@@ -48,7 +48,7 @@
 {#if isUploading}
   <div class="rounded-3xl border border-blue-200/60 bg-blue-50/50 p-8 text-center" aria-live="polite" aria-busy="true">
     <div class="mx-auto mb-4 h-10 w-10 animate-spin rounded-full border-2 border-blue-600 border-t-transparent"></div>
-    <h3 class="text-lg font-bold text-slate-900">封存中...</h3>
+    <h3 class="text-lg font-bold text-slate-900">上傳中...</h3>
     <p class="mt-2 text-sm text-slate-600">正在處理檔案，請稍等一下。</p>
   </div>
 {:else}
@@ -69,16 +69,16 @@
 
       <div>
         <h3 class="text-xl font-black text-slate-900">
-          把檔案投入封存口
+          拖曳檔案到這裡
         </h3>
         <p class="mx-auto mt-2 max-w-sm text-sm leading-6 text-slate-600">
-          或點一下開啟檔案選擇器。支援所有檔案類型，檔案上限 25MB。
+          或點擊選擇檔案。支援所有類型，上限 25MB。
         </p>
       </div>
 
       <span class="inline-flex min-h-11 items-center justify-center gap-2 rounded-2xl bg-blue-600 px-5 py-3 text-sm font-black text-white shadow-sm transition group-hover:bg-blue-700 group-hover:shadow-md">
         <FileText class="h-4 w-4" />
-        Drop a file
+        拖曳上傳
       </span>
     </div>
 

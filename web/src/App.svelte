@@ -67,12 +67,12 @@
         </div>
         <div>
           <p class="text-lg font-black tracking-tight text-slate-900" style="font-family: 'Fraunces', serif;">Folio</p>
-          <p class="text-xs font-medium uppercase tracking-[0.32em] text-blue-600/70">sealed file drop</p>
+          <p class="text-xs font-medium uppercase tracking-[0.32em] text-blue-600/70">安全檔案分享</p>
         </div>
       </div>
       <div class="hidden items-center gap-2 rounded-full border border-slate-200/60 bg-white/80 px-4 py-2 text-sm text-slate-600 backdrop-blur md:flex">
         <ShieldCheck class="h-4 w-4 text-emerald-600" />
-        Cloudflare Access ready
+        支援 Cloudflare Access
       </div>
     </header>
 
@@ -80,7 +80,7 @@
       <div class="space-y-8">
         <div class="inline-flex items-center gap-3 rounded-full border border-blue-600/20 bg-blue-100/30 px-4 py-2 text-sm font-bold text-blue-700">
           <span class="h-2 w-2 rounded-full bg-blue-600"></span>
-          自架投遞 · 私密封存 · 短效分享
+          自架託管 · 私密分享 · 短效連結
         </div>
 
         <div class="space-y-5">
@@ -88,10 +88,10 @@
             Drop once.<br />Share on your own terms.
           </h1>
           <h2 class="mt-6 text-2xl font-bold text-slate-700" style="font-family: 'Fraunces', serif;">
-            安全、快速地分享你的檔案
+            安全又快速的檔案分享
           </h2>
           <p class="max-w-2xl text-lg leading-8 text-slate-600 sm:text-xl">
-            把檔案投入自己的小型封存口，取得乾淨短連結；需要時再用 Access 嚴格限制存取。
+            上傳檔案、取得短連結，需要時還能用 email 名單控管存取權限。
           </p>
         </div>
 
@@ -100,22 +100,22 @@
             <div class="mb-4 flex h-10 w-10 items-center justify-center rounded-xl bg-blue-100/60">
               <Upload class="h-5 w-5 text-blue-600" />
             </div>
-            <h3 class="text-lg font-bold text-slate-900">快速投遞</h3>
-            <p class="mt-1 text-sm text-slate-500">拖曳或點選皆流暢。</p>
+            <h3 class="text-lg font-bold text-slate-900">快速上傳</h3>
+            <p class="mt-1 text-sm text-slate-500">拖曳或點選，怎麼傳都行。</p>
           </div>
           <div class="rounded-2xl border border-slate-200/60 bg-white/70 p-5 backdrop-blur-sm shadow-sm">
             <div class="mb-4 flex h-10 w-10 items-center justify-center rounded-xl bg-blue-100/60">
               <Link2 class="h-5 w-5 text-blue-600" />
             </div>
             <h3 class="text-lg font-bold text-slate-900">乾淨連結</h3>
-            <p class="mt-1 text-sm text-slate-500">生成後直接分享。</p>
+            <p class="mt-1 text-sm text-slate-500">產生短網址，直接丟給對方。</p>
           </div>
           <div class="rounded-2xl border border-blue-200/60 bg-blue-50/50 p-5 backdrop-blur-sm shadow-sm">
             <div class="mb-4 flex h-10 w-10 items-center justify-center rounded-xl bg-blue-100/60">
               <Clock class="h-5 w-5 text-blue-600" />
             </div>
-            <h3 class="text-lg font-bold text-slate-900">短效封印</h3>
-            <p class="mt-1 text-sm text-slate-500">預設保留 7 天。</p>
+            <h3 class="text-lg font-bold text-slate-900">自動過期</h3>
+            <p class="mt-1 text-sm text-slate-500">預設 7 天後自動清除。</p>
           </div>
         </div>
       </div>
@@ -127,7 +127,7 @@
 
           <div class="mb-6 flex items-start justify-between gap-4">
             <div>
-              <p class="text-sm font-semibold uppercase tracking-[0.26em] text-blue-600/80" style="font-family: 'JetBrains Mono', monospace;">sealed drop slot</p>
+              <p class="text-sm font-semibold uppercase tracking-[0.26em] text-blue-600/80" style="font-family: 'JetBrains Mono', monospace;">上傳區域</p>
               <h2 id="upload-title" class="mt-2 text-2xl font-black tracking-tight text-slate-900 sm:text-3xl" style="font-family: 'Fraunces', serif;">
                 檔案上傳
               </h2>
