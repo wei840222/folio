@@ -12,36 +12,37 @@
   }
 </script>
 
-<div class="bg-blue-50 border border-blue-200 rounded-lg p-6">
-  <div class="flex items-center gap-3 mb-4">
-    <div class="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center">
-      <Link class="w-5 h-5 text-blue-600" />
+<div class="rounded-3xl border border-cyan-300/20 bg-cyan-300/10 p-5 shadow-lg shadow-cyan-950/20">
+  <div class="mb-5 flex items-center gap-3">
+    <div class="flex h-11 w-11 items-center justify-center rounded-2xl bg-cyan-200/15 text-cyan-100">
+      <Link class="h-5 w-5" />
     </div>
     <div>
-      <h3 class="font-semibold text-blue-800">分享連結已生成</h3>
-      <p class="text-sm text-blue-600">您可以透過連結分享檔案。</p>
+      <h3 class="font-bold text-cyan-50">分享連結已生成</h3>
+      <p class="text-sm text-cyan-100/70">複製連結，或直接開啟檢查下載頁。</p>
     </div>
   </div>
 
-  <div class="space-y-3">
+  <div class="space-y-4">
     <div>
-      <label for="download-url" class="text-sm font-medium text-gray-700">
+      <label for="download-url" class="text-sm font-semibold text-cyan-50">
         分享連結
       </label>
-      <div class="flex gap-2 mt-1">
+      <div class="mt-2 grid gap-2 sm:grid-cols-[1fr_auto]">
         <input
           id="download-url"
           type="url"
           value={url}
           readonly
-          class="flex h-9 w-full min-w-0 rounded-md border border-gray-300 bg-white px-3 py-1 text-base shadow-xs outline-none focus-visible:border-blue-500 focus-visible:ring-2 focus-visible:ring-blue-500/50"
+          class="min-h-11 w-full min-w-0 rounded-2xl border border-white/10 bg-slate-950/70 px-4 py-3 text-sm text-slate-100 shadow-inner shadow-black/20 outline-none focus-visible:border-cyan-300 focus-visible:ring-2 focus-visible:ring-cyan-300/40"
         />
         <button
           type="button"
           onclick={handleCopy}
-          class="inline-flex shrink-0 items-center justify-center gap-1 whitespace-nowrap rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium shadow-xs transition-all hover:bg-gray-50 cursor-pointer {copied ? 'bg-gray-100' : ''}"
+          class="inline-flex min-h-11 shrink-0 items-center justify-center gap-2 whitespace-nowrap rounded-2xl px-4 py-3 text-sm font-black transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300 cursor-pointer {copied ? 'bg-emerald-300 text-slate-950' : 'bg-white text-slate-950 hover:bg-cyan-100'}"
+          aria-live="polite"
         >
-          <Copy class="w-4 h-4" />
+          <Copy class="h-4 w-4" />
           {copied ? '已複製' : '複製'}
         </button>
       </div>
@@ -51,14 +52,14 @@
       href={url}
       target="_blank"
       rel="noopener noreferrer"
-      class="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow-xs transition-all hover:bg-blue-700 w-full cursor-pointer"
+      class="inline-flex min-h-11 w-full items-center justify-center gap-2 whitespace-nowrap rounded-2xl border border-white/10 bg-white/[0.07] px-4 py-3 text-sm font-bold text-white transition hover:bg-white/[0.12] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300 cursor-pointer"
     >
-      <ExternalLink class="w-4 h-4" />
+      <ExternalLink class="h-4 w-4" />
       打開連結
     </a>
   </div>
 
-  <div class="mt-4 pt-4 border-t border-blue-200">
-    <p class="text-xs text-blue-600">連結有效時間：7天</p>
+  <div class="mt-5 border-t border-white/10 pt-4">
+    <p class="text-xs font-medium uppercase tracking-[0.2em] text-cyan-100/60">expires in 7 days</p>
   </div>
 </div>

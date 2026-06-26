@@ -1,7 +1,12 @@
 @import "tailwindcss";
 
 @layer base {
+  html {
+    color-scheme: dark;
+  }
+
   body {
-    @apply bg-white text-gray-900;
+    @apply bg-slate-950 text-slate-100 antialiased;
+    font-family: "Avenir Next", "Nunito Sans", "Segoe UI", system-ui, sans-serif;
   }
 }

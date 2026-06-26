@@ -1,14 +1,16 @@
 <script lang="ts">
-  import { Upload, Link, Copy, Download } from '@lucide/svelte';
+  import { Upload, Link, Copy, Download, ShieldCheck, Sparkles, TimerReset } from '@lucide/svelte';
   import FileUploadZone from './components/FileUploadZone.svelte';
   import DownloadLink from './components/DownloadLink.svelte';
 
   let uploadedFile = $state<File | null>(null);
   let isUploading = $state(false);
   let shortUrl = $state('');
+  let uploadError = $state('');
 
   async function handleFileUpload(file: File) {
     isUploading = true;
+    uploadError = '';
 
     const formData = new FormData();
     formData.append('file', file);
@@ -31,7 +33,7 @@
       uploadedFile = file;
     } catch (error) {
       console.error('上傳錯誤:', error);
-      alert('檔案上傳失敗，請稍後再試。');
+      uploadError = '檔案上傳失敗，請稍後再試。';
       return;
     } finally {
       isUploading = false;
@@ -41,6 +43,7 @@
   function handleReset() {
     uploadedFile = null;
     shortUrl = '';
+    uploadError = '';
   }
 </script>
 
@@ -48,89 +51,117 @@
   <title>Folio</title>
 </svelte:head>
 
-<div class="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50">
-  <div class="container mx-auto px-4 py-8 flex flex-col justify-center min-h-screen">
-    <div class="max-w-2xl mx-auto">
-      <!-- Header -->
-      <div class="text-center mb-8">
-        <h1 class="text-4xl font-bold text-gray-900 mb-4">Folio</h1>
-        <p class="text-lg text-gray-600">
-          上傳您的檔案，生成短網址，輕鬆分享給朋友或同事。
-        </p>
+<main class="relative min-h-screen overflow-hidden bg-slate-950 text-slate-100">
+  <div class="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(45,212,191,0.28),transparent_34%),radial-gradient(circle_at_85%_20%,rgba(129,140,248,0.24),transparent_30%),linear-gradient(135deg,#020617_0%,#0f172a_52%,#111827_100%)]"></div>
+  <div class="pointer-events-none absolute inset-0 opacity-[0.08] [background-image:linear-gradient(rgba(255,255,255,.9)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,.9)_1px,transparent_1px)] [background-size:48px_48px]"></div>
+
+  <div class="relative mx-auto flex min-h-screen w-full max-w-6xl flex-col px-4 py-6 sm:px-6 lg:px-8">
+    <header class="flex items-center justify-between py-3">
+      <div class="flex items-center gap-3">
+        <div class="flex h-11 w-11 items-center justify-center rounded-2xl border border-cyan-300/25 bg-cyan-300/10 shadow-lg shadow-cyan-950/40">
+          <Upload class="h-5 w-5 text-cyan-200" />
+        </div>
+        <div>
+          <p class="text-lg font-black tracking-tight text-white">Folio</p>
+          <p class="text-xs font-medium uppercase tracking-[0.32em] text-cyan-200/70">private file drop</p>
+        </div>
+      </div>
+      <div class="hidden items-center gap-2 rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm text-slate-300 backdrop-blur md:flex">
+        <ShieldCheck class="h-4 w-4 text-emerald-300" />
+        Cloudflare Access ready
+      </div>
+    </header>
+
+    <section class="grid flex-1 items-center gap-8 py-10 lg:grid-cols-[1.04fr_0.96fr] lg:py-16">
+      <div class="space-y-8">
+        <div class="inline-flex items-center gap-2 rounded-full border border-cyan-300/20 bg-cyan-300/10 px-4 py-2 text-sm font-medium text-cyan-100 shadow-lg shadow-cyan-950/30 backdrop-blur">
+          <Sparkles class="h-4 w-4" />
+          自架、短連結、過期清理，一次到位
+        </div>
+
+        <div class="space-y-5">
+          <h1 class="max-w-3xl text-5xl font-black leading-[0.95] tracking-tight text-white sm:text-7xl lg:text-8xl">
+            Share files without the SaaS tax.
+          </h1>
+          <p class="max-w-2xl text-lg leading-8 text-slate-300 sm:text-xl">
+            把檔案丟進自己的小型 drop zone，拿到乾淨短連結，需要時再用 Access 保護私密下載。
+          </p>
+        </div>
+
+        <div class="grid gap-3 sm:grid-cols-3">
+          <div class="rounded-3xl border border-white/10 bg-white/[0.06] p-4 backdrop-blur">
+            <Upload class="mb-3 h-5 w-5 text-cyan-200" />
+            <p class="font-semibold text-white">快速上傳</p>
+            <p class="mt-1 text-sm text-slate-400">拖曳或點選都順。</p>
+          </div>
+          <div class="rounded-3xl border border-white/10 bg-white/[0.06] p-4 backdrop-blur">
+            <Link class="mb-3 h-5 w-5 text-violet-200" />
+            <p class="font-semibold text-white">短連結</p>
+            <p class="mt-1 text-sm text-slate-400">生成後直接分享。</p>
+          </div>
+          <div class="rounded-3xl border border-white/10 bg-white/[0.06] p-4 backdrop-blur">
+            <TimerReset class="mb-3 h-5 w-5 text-amber-200" />
+            <p class="font-semibold text-white">自動過期</p>
+            <p class="mt-1 text-sm text-slate-400">預設保留 7 天。</p>
+          </div>
+        </div>
       </div>
 
-      <!-- Main Card -->
-      <div class="bg-white/80 backdrop-blur-sm rounded-xl border py-6 shadow-xl">
-        <div class="px-6 pb-6 text-center">
-          <h2 class="flex items-center justify-center gap-2 text-2xl font-semibold">
-            <Upload class="w-6 h-6 text-blue-600" />
-            檔案上傳
-          </h2>
-        </div>
-        <div class="px-6">
+      <section aria-labelledby="upload-title" class="rounded-[2rem] border border-white/12 bg-white/[0.08] p-3 shadow-2xl shadow-black/30 backdrop-blur-2xl">
+        <div class="rounded-[1.65rem] border border-white/10 bg-slate-950/70 p-5 sm:p-7">
+          <div class="mb-6 flex items-start justify-between gap-4">
+            <div>
+              <p class="text-sm font-semibold uppercase tracking-[0.26em] text-cyan-200/80">drop zone</p>
+              <h2 id="upload-title" class="mt-2 text-2xl font-black tracking-tight text-white sm:text-3xl">
+                檔案上傳
+              </h2>
+            </div>
+            <div class="rounded-2xl bg-white/10 p-3 text-cyan-200">
+              <Upload class="h-5 w-5" />
+            </div>
+          </div>
+
+          {#if uploadError}
+            <div class="mb-5 rounded-2xl border border-rose-300/30 bg-rose-400/10 px-4 py-3 text-sm text-rose-100" role="alert">
+              {uploadError}
+            </div>
+          {/if}
+
           {#if !uploadedFile}
             <FileUploadZone onfileselect={handleFileUpload} {isUploading} />
           {:else}
-            <div class="space-y-6">
-              <!-- Upload Success Info -->
-              <div class="bg-green-50 border border-green-200 rounded-lg p-4">
-                <div class="flex items-center gap-3">
-                  <div class="w-10 h-10 bg-green-100 rounded-full flex items-center justify-center">
-                    <Download class="w-5 h-5 text-green-600" />
+            <div class="space-y-5">
+              <div class="rounded-3xl border border-emerald-300/25 bg-emerald-300/10 p-4">
+                <div class="flex items-center gap-4">
+                  <div class="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-emerald-300/15 text-emerald-200">
+                    <Download class="h-5 w-5" />
                   </div>
-                  <div>
-                    <h3 class="font-semibold text-green-800">
+                  <div class="min-w-0">
+                    <h3 class="truncate font-bold text-emerald-50">
                       {uploadedFile.name}
                     </h3>
-                    <p class="text-sm text-green-600">
-                      檔案大小：{(uploadedFile.size / 1024 / 1024).toFixed(2)} MB
+                    <p class="text-sm text-emerald-100/75">
+                      {(uploadedFile.size / 1024 / 1024).toFixed(2)} MB · 已準備分享
                     </p>
                   </div>
                 </div>
               </div>
 
-              <!-- Download Link -->
               {#if shortUrl}
                 <DownloadLink url={shortUrl} />
               {/if}
 
-              <!-- Reset Button -->
               <button
                 type="button"
                 onclick={handleReset}
-                class="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md border bg-white shadow-xs px-4 py-2 text-sm font-medium transition-all hover:bg-gray-50 w-full cursor-pointer"
+                class="min-h-11 w-full rounded-2xl border border-white/10 bg-white/[0.07] px-4 py-3 text-sm font-bold text-white transition hover:bg-white/[0.12] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300 cursor-pointer"
               >
                 上傳新檔案
               </button>
             </div>
           {/if}
         </div>
-      </div>
-
-      <!-- Features -->
-      <div class="grid md:grid-cols-3 gap-6 mt-12">
-        <div class="text-center">
-          <div class="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center mx-auto mb-3">
-            <Upload class="w-6 h-6 text-blue-600" />
-          </div>
-          <h3 class="font-semibold mb-2">快速上傳</h3>
-          <p class="text-sm text-gray-600">支援拖曳上傳，方便快速。</p>
-        </div>
-        <div class="text-center">
-          <div class="w-12 h-12 bg-purple-100 rounded-lg flex items-center justify-center mx-auto mb-3">
-            <Link class="w-6 h-6 text-purple-600" />
-          </div>
-          <h3 class="font-semibold mb-2">短網址生成</h3>
-          <p class="text-sm text-gray-600">自動生成方便分享的短網址。</p>
-        </div>
-        <div class="text-center">
-          <div class="w-12 h-12 bg-green-100 rounded-lg flex items-center justify-center mx-auto mb-3">
-            <Copy class="w-6 h-6 text-green-600" />
-          </div>
-          <h3 class="font-semibold mb-2">一鍵複製</h3>
-          <p class="text-sm text-gray-600">點選就能複製分享連結。</p>
-        </div>
-      </div>
-    </div>
+      </section>
+    </section>
   </div>
-</div>
+</main>

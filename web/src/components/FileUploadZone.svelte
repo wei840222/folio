@@ -46,45 +46,40 @@
 </script>
 
 {#if isUploading}
-  <div class="border-2 border-dashed border-blue-300 rounded-lg p-12 text-center bg-blue-50">
-    <div class="animate-spin w-8 h-8 border-3 border-blue-600 border-t-transparent rounded-full mx-auto mb-4"></div>
-    <h3 class="text-lg font-semibold text-blue-800 mb-2">上傳中...</h3>
-    <p class="text-blue-600">請稍後，檔案處理中...</p>
+  <div class="rounded-3xl border border-cyan-300/30 bg-cyan-300/10 p-8 text-center" aria-live="polite" aria-busy="true">
+    <div class="mx-auto mb-4 h-10 w-10 animate-spin rounded-full border-2 border-cyan-200 border-t-transparent"></div>
+    <h3 class="text-lg font-bold text-cyan-50">上傳中...</h3>
+    <p class="mt-2 text-sm text-cyan-100/70">正在處理檔案，請稍等一下。</p>
   </div>
 {:else}
-  <!-- svelte-ignore a11y_click_events_have_key_events -->
-  <!-- svelte-ignore a11y_no_static_element_interactions -->
-  <div
-    class="border-2 border-dashed rounded-lg p-12 text-center transition-all duration-200 cursor-pointer {isDragOver ? 'border-blue-500 bg-blue-50 scale-105' : 'border-gray-300 hover:border-blue-400 hover:bg-gray-50'}"
+  <button
+    type="button"
+    class="group relative w-full overflow-hidden rounded-3xl border border-dashed p-8 text-center transition duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300 sm:p-10 cursor-pointer {isDragOver ? 'scale-[1.01] border-cyan-200 bg-cyan-300/15 shadow-2xl shadow-cyan-950/40' : 'border-white/20 bg-white/[0.04] hover:border-cyan-200/70 hover:bg-cyan-300/10'}"
     ondragover={handleDragOver}
     ondragleave={handleDragLeave}
     ondrop={handleDrop}
     onclick={openFilePicker}
-    role="button"
-    tabindex="0"
-    onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openFilePicker(); } }}
     aria-label="上傳檔案區域，點擊或拖曳檔案到此處"
   >
-    <div class="space-y-4">
-      <div class="mx-auto w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center">
-        <Upload class="w-8 h-8 text-blue-600" />
+    <div class="pointer-events-none absolute inset-x-8 top-0 h-px bg-gradient-to-r from-transparent via-cyan-200/70 to-transparent"></div>
+    <div class="space-y-5">
+      <div class="mx-auto flex h-20 w-20 items-center justify-center rounded-[1.75rem] border border-cyan-200/20 bg-cyan-200/10 text-cyan-100 shadow-lg shadow-cyan-950/30 transition group-hover:scale-105">
+        <Upload class="h-9 w-9" />
       </div>
 
       <div>
-        <h3 class="text-lg font-semibold text-gray-900 mb-2">
-          拖曳檔案到此處或點選上傳按鈕
+        <h3 class="text-xl font-black text-white">
+          拖曳檔案到這裡
         </h3>
-        <p class="text-gray-600 mb-4">支援所有檔案類型，最大大小5MB</p>
+        <p class="mx-auto mt-2 max-w-sm text-sm leading-6 text-slate-300">
+          或點一下開啟檔案選擇器。支援所有檔案類型，最大大小 5MB。
+        </p>
       </div>
 
-      <button
-        type="button"
-        class="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow-xs transition-all hover:bg-blue-700 cursor-pointer"
-        onclick={(e) => { e.stopPropagation(); openFilePicker(); }}
-      >
-        <FileText class="w-4 h-4" />
+      <span class="inline-flex min-h-11 items-center justify-center gap-2 rounded-2xl bg-cyan-200 px-5 py-3 text-sm font-black text-slate-950 shadow-lg shadow-cyan-950/20 transition group-hover:bg-white">
+        <FileText class="h-4 w-4" />
         選擇檔案
-      </button>
+      </span>
     </div>
 
     <input
@@ -94,5 +89,5 @@
       onchange={handleFileInput}
       aria-hidden="true"
     />
-  </div>
+  </button>
 {/if}
