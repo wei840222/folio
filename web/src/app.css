@@ -9,4 +9,14 @@
     @apply bg-slate-950 text-slate-100 antialiased;
     font-family: "Avenir Next", "Nunito Sans", "Segoe UI", system-ui, sans-serif;
   }
+
+  h1,
+  h2,
+  h3 {
+    text-wrap: balance;
+  }
+
+  p {
+    text-wrap: pretty;
+  }
 }

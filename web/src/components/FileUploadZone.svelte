@@ -46,39 +46,39 @@
 </script>
 
 {#if isUploading}
-  <div class="rounded-3xl border border-cyan-300/30 bg-cyan-300/10 p-8 text-center" aria-live="polite" aria-busy="true">
-    <div class="mx-auto mb-4 h-10 w-10 animate-spin rounded-full border-2 border-cyan-200 border-t-transparent"></div>
-    <h3 class="text-lg font-bold text-cyan-50">上傳中...</h3>
-    <p class="mt-2 text-sm text-cyan-100/70">正在處理檔案，請稍等一下。</p>
+  <div class="rounded-3xl border border-[#8dddd5]/30 bg-[#8dddd5]/10 p-8 text-center" aria-live="polite" aria-busy="true">
+    <div class="mx-auto mb-4 h-10 w-10 animate-spin rounded-full border-2 border-[#8dddd5] border-t-transparent"></div>
+    <h3 class="text-lg font-bold text-[#effffb]">封存中...</h3>
+    <p class="mt-2 text-sm text-[#bdebe5]">正在處理檔案，請稍等一下。</p>
   </div>
 {:else}
   <button
     type="button"
-    class="group relative w-full overflow-hidden rounded-3xl border border-dashed p-8 text-center transition duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300 sm:p-10 cursor-pointer {isDragOver ? 'scale-[1.01] border-cyan-200 bg-cyan-300/15 shadow-2xl shadow-cyan-950/40' : 'border-white/20 bg-white/[0.04] hover:border-cyan-200/70 hover:bg-cyan-300/10'}"
+    class="group relative w-full cursor-pointer overflow-hidden rounded-3xl border border-dashed p-8 text-center transition duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#8dddd5] sm:p-10 {isDragOver ? 'scale-[1.01] border-[#8dddd5] bg-[#8dddd5]/15 shadow-2xl shadow-black/40' : 'border-[#f7efe6]/20 bg-[#f7efe6]/[0.04] hover:border-[#8dddd5]/70 hover:bg-[#8dddd5]/10'}"
     ondragover={handleDragOver}
     ondragleave={handleDragLeave}
     ondrop={handleDrop}
     onclick={openFilePicker}
     aria-label="上傳檔案區域，點擊或拖曳檔案到此處"
   >
-    <div class="pointer-events-none absolute inset-x-8 top-0 h-px bg-gradient-to-r from-transparent via-cyan-200/70 to-transparent"></div>
+    <div class="pointer-events-none absolute inset-x-8 top-0 h-1 rounded-b-full bg-gradient-to-r from-transparent via-[#d96c4a]/80 to-transparent"></div>
     <div class="space-y-5">
-      <div class="mx-auto flex h-20 w-20 items-center justify-center rounded-[1.75rem] border border-cyan-200/20 bg-cyan-200/10 text-cyan-100 shadow-lg shadow-cyan-950/30 transition group-hover:scale-105">
+      <div class="mx-auto flex h-20 w-20 items-center justify-center rounded-[1.75rem] border border-[#8dddd5]/20 bg-[#8dddd5]/10 text-[#bff5ef] shadow-lg shadow-black/30 transition group-hover:scale-105">
         <Upload class="h-9 w-9" />
       </div>
 
       <div>
-        <h3 class="text-xl font-black text-white">
-          拖曳檔案到這裡
+        <h3 class="text-xl font-black text-[#fff8ee]">
+          把檔案投入封存口
         </h3>
-        <p class="mx-auto mt-2 max-w-sm text-sm leading-6 text-slate-300">
+        <p class="mx-auto mt-2 max-w-sm text-sm leading-6 text-[#d8cfc3]">
           或點一下開啟檔案選擇器。支援所有檔案類型，最大大小 5MB。
         </p>
       </div>
 
-      <span class="inline-flex min-h-11 items-center justify-center gap-2 rounded-2xl bg-cyan-200 px-5 py-3 text-sm font-black text-slate-950 shadow-lg shadow-cyan-950/20 transition group-hover:bg-white">
+      <span class="inline-flex min-h-11 items-center justify-center gap-2 rounded-2xl bg-[#8dddd5] px-5 py-3 text-sm font-black text-[#07111f] shadow-lg shadow-black/20 transition group-hover:bg-[#fff8ee]">
         <FileText class="h-4 w-4" />
-        選擇檔案
+        Drop a file
       </span>
     </div>
 
