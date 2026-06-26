@@ -123,6 +123,7 @@ mod tests {
             web_path: "./web/dist".to_string(),
             uploads_path: temp_dir.path().to_string_lossy().to_string(),
             data_path: temp_dir.path().to_string_lossy().to_string(),
+            max_upload_size: 25 * 1024 * 1024,
         };
         ExpiryStore::new(&config)
     }

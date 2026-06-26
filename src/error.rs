@@ -22,6 +22,9 @@ pub enum FolioError {
     BadRequest {
         reason: String,
     },
+    PayloadTooLarge {
+        reason: String,
+    },
     Internal {
         source: String,
         context: Option<String>,
@@ -36,6 +39,7 @@ impl FolioError {
             Self::Forbidden { .. } => StatusCode::FORBIDDEN,
             Self::Conflict { .. } => StatusCode::CONFLICT,
             Self::BadRequest { .. } => StatusCode::BAD_REQUEST,
+            Self::PayloadTooLarge { .. } => StatusCode::PAYLOAD_TOO_LARGE,
             Self::Internal { .. } => StatusCode::INTERNAL_SERVER_ERROR,
         }
     }
@@ -47,6 +51,7 @@ impl FolioError {
             Self::Forbidden { reason } => reason.clone(),
             Self::Conflict { path } => format!("file already exists: {}", path),
             Self::BadRequest { reason } => reason.clone(),
+            Self::PayloadTooLarge { reason } => reason.clone(),
             Self::Internal { source, context } => match context {
                 Some(ctx) => format!("{}: {}", ctx, source),
                 None => source.clone(),

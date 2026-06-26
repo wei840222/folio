@@ -8,6 +8,7 @@ pub struct Folio {
     pub web_path: String,
     pub uploads_path: String,
     pub data_path: String,
+    pub max_upload_size: usize,
 }
 
 impl Folio {
@@ -73,6 +74,7 @@ impl Default for Folio {
             web_path: String::from("./web/dist"),
             uploads_path: String::from("./uploads"),
             data_path: String::from("./data"),
+            max_upload_size: 25 * 1024 * 1024, // 25 MiB
         }
     }
 }
@@ -88,6 +90,7 @@ mod tests {
         assert_eq!(config.port, 8000);
         assert_eq!(config.web_path, "./web/dist");
         assert_eq!(config.uploads_path, "./uploads");
+        assert_eq!(config.max_upload_size, 25 * 1024 * 1024);
     }
 
     mod build_full_upload_path {
@@ -151,6 +154,7 @@ mod tests {
                 web_path: String::from("./web"),
                 uploads_path: String::from("./custom_uploads"),
                 data_path: String::from("./data"),
+                max_upload_size: 25 * 1024 * 1024,
             };
             let path = config.build_full_upload_path(&PathBuf::from("test.txt"));
 
@@ -176,6 +180,7 @@ mod tests {
                 web_path: String::from("./web"),
                 uploads_path: String::from("/tmp/test_uploads"),
                 data_path: String::from("./data"),
+                max_upload_size: 25 * 1024 * 1024,
             };
             let path = config.build_full_upload_path(&PathBuf::from("test.txt"));
 

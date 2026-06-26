@@ -136,7 +136,7 @@ async fn save_upload_payload(
                 let id = generate_unique_upload_id(config, extension.as_deref())?;
                 let file_name = id.file_name(extension.as_deref());
                 let full_path = config.build_full_upload_path(&PathBuf::from(&file_name));
-                save_field_to_path(&mut field, &full_path).await?;
+                save_field_to_path(&mut field, &full_path, config.max_upload_size).await?;
                 parts.file_name = Some(file_name);
             }
             Some("authorized_emails") => {
@@ -193,7 +193,11 @@ fn generate_unique_upload_id(
     }
 }
 
-async fn save_field_to_path(field: &mut Field, full_path: &Path) -> Result<(), FolioError> {
+async fn save_field_to_path(
+    field: &mut Field,
+    full_path: &Path,
+    max_size: usize,
+) -> Result<(), FolioError> {
     if let Some(parent) = full_path.parent() {
         tokio::fs::create_dir_all(parent)
             .await
@@ -212,10 +216,22 @@ async fn save_field_to_path(field: &mut Field, full_path: &Path) -> Result<(), F
         }
     })?;
 
+    let mut bytes_written: usize = 0;
     while let Some(chunk) = field.next().await {
         let data = chunk.map_err(|e| FolioError::BadRequest {
             reason: format!("invalid multipart file field: {}", e),
         })?;
+        bytes_written += data.len();
+        if bytes_written > max_size {
+            let message = format!(
+                "file too large: {} bytes exceeds {} byte limit",
+                bytes_written, max_size
+            );
+            log::error!("POST /uploads error: {}", message);
+            drop(output);
+            let _ = tokio::fs::remove_file(full_path).await;
+            return Err(FolioError::PayloadTooLarge { reason: message });
+        }
         output.write_all(&data).await.map_err(|e| {
             let message = format!("failed to save file: {}", e);
             log::error!("POST /uploads error: {}", message);

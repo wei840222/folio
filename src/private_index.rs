@@ -77,6 +77,7 @@ mod tests {
             web_path: "".to_string(),
             uploads_path: temp_path.to_str().unwrap().to_string(),
             data_path: temp_path.to_str().unwrap().to_string(),
+            max_upload_size: 25 * 1024 * 1024,
         };
         PrivateIndexStore::new(&config)
     }

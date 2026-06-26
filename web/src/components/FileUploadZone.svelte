@@ -72,7 +72,7 @@
           把檔案投入封存口
         </h3>
         <p class="mx-auto mt-2 max-w-sm text-sm leading-6 text-[#d8cfc3]">
-          或點一下開啟檔案選擇器。支援所有檔案類型，最大大小 5MB。
+          或點一下開啟檔案選擇器。支援所有檔案類型，檔案上限 25MB。
         </p>
       </div>
 

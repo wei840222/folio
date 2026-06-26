@@ -85,7 +85,7 @@
             Drop once. Share on your own terms.
           </h1>
           <p class="max-w-2xl text-lg leading-8 text-[#d8cfc3] sm:text-xl">
-            把檔案投入自己的小型封存口，取得乾淨短連結；需要時再用 Access 把下載權限鎖好。
+            把檔案投入自己的小型封存口，取得乾淨短連結；需要時再用 Access 嚴格限制存取。
           </p>
         </div>
 
@@ -93,7 +93,7 @@
           <div class="rounded-3xl border border-[#f7efe6]/10 bg-[#f7efe6]/[0.055] p-4 backdrop-blur">
             <p class="text-xs font-bold uppercase tracking-[0.24em] text-[#8dddd5]">01 · drop</p>
             <p class="mt-3 font-semibold text-[#fff8ee]">快速投遞</p>
-            <p class="mt-1 text-sm text-[#a89f95]">拖曳或點選都順。</p>
+            <p class="mt-1 text-sm text-[#a89f95]">拖曳或點選皆流暢。</p>
           </div>
           <div class="rounded-3xl border border-[#f7efe6]/10 bg-[#f7efe6]/[0.055] p-4 backdrop-blur">
             <p class="text-xs font-bold uppercase tracking-[0.24em] text-[#8dddd5]">02 · link</p>
