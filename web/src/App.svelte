@@ -157,10 +157,13 @@
                       ready seal
                     </div>
                     <h3 class="truncate font-bold text-slate-900">
-                      {uploadedFile.name}
+                      {shortUrl.split('/').pop()}
                     </h3>
                     <p class="text-sm text-slate-600">
                       {(uploadedFile.size / 1024 / 1024).toFixed(2)} MB · 已準備分享
+                    </p>
+                    <p class="text-xs text-slate-400 truncate mt-0.5" title={uploadedFile.name}>
+                      原始檔名：{uploadedFile.name}
                     </p>
                   </div>
                 </div>
