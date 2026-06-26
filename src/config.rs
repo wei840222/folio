@@ -11,7 +11,7 @@ pub struct Folio {
 }
 
 impl Folio {
-    fn resolve_base(&self, path_str: &str) -> PathBuf {
+    pub fn resolve_base(&self, path_str: &str) -> PathBuf {
         let p = PathBuf::from(path_str);
         if p.is_absolute() {
             p

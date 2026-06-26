@@ -19,3 +19,7 @@ target/
 
 # CodeGraph
 .codegraph/
+
+# Runtime data
+data/
+uploads/

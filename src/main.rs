@@ -31,6 +31,16 @@ async fn main() -> std::io::Result<()> {
     apply_rocket_compat_env(&mut config);
     log::info!("Using config: {:?}", config);
 
+    // Ensure runtime data directories exist
+    let uploads_dir = config.resolve_base(&config.uploads_path);
+    let data_dir = config.resolve_base(&config.data_path);
+    std::fs::create_dir_all(&uploads_dir).unwrap_or_else(|e| {
+        panic!("Failed to create uploads directory {}: {}", uploads_dir.display(), e)
+    });
+    std::fs::create_dir_all(&data_dir).unwrap_or_else(|e| {
+        panic!("Failed to create data directory {}: {}", data_dir.display(), e)
+    });
+
     let expiry_store = Arc::new(expiry::ExpiryStore::new(&config));
     expiry_store.clone().spawn_sweeper(Duration::from_secs(60));
 
