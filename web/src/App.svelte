@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Upload, Download, ShieldCheck, Mail, Stamp } from '@lucide/svelte';
+  import { Upload, Download, ShieldCheck, Mail, Stamp, Link2, Clock } from '@lucide/svelte';
   import FileUploadZone from './components/FileUploadZone.svelte';
   import DownloadLink from './components/DownloadLink.svelte';
 
@@ -96,19 +96,25 @@
         </div>
 
         <div class="grid gap-3 sm:grid-cols-3">
-          <div class="rounded-2xl border border-slate-200/60 bg-white/70 p-4 backdrop-blur-sm shadow-sm">
-            <p class="text-xs font-bold uppercase tracking-[0.24em] text-blue-600" style="font-family: 'JetBrains Mono', monospace;">01 · drop</p>
-            <p class="mt-3 font-semibold text-slate-900">快速投遞</p>
+          <div class="rounded-2xl border border-slate-200/60 bg-white/70 p-5 backdrop-blur-sm shadow-sm">
+            <div class="mb-4 flex h-10 w-10 items-center justify-center rounded-xl bg-blue-100/60">
+              <Upload class="h-5 w-5 text-blue-600" />
+            </div>
+            <h3 class="text-lg font-bold text-slate-900">快速投遞</h3>
             <p class="mt-1 text-sm text-slate-500">拖曳或點選皆流暢。</p>
           </div>
-          <div class="rounded-2xl border border-slate-200/60 bg-white/70 p-4 backdrop-blur-sm shadow-sm">
-            <p class="text-xs font-bold uppercase tracking-[0.24em] text-blue-600" style="font-family: 'JetBrains Mono', monospace;">02 · link</p>
-            <p class="mt-3 font-semibold text-slate-900">乾淨連結</p>
+          <div class="rounded-2xl border border-slate-200/60 bg-white/70 p-5 backdrop-blur-sm shadow-sm">
+            <div class="mb-4 flex h-10 w-10 items-center justify-center rounded-xl bg-blue-100/60">
+              <Link2 class="h-5 w-5 text-blue-600" />
+            </div>
+            <h3 class="text-lg font-bold text-slate-900">乾淨連結</h3>
             <p class="mt-1 text-sm text-slate-500">生成後直接分享。</p>
           </div>
-          <div class="rounded-2xl border border-blue-200/60 bg-blue-50/50 p-4 backdrop-blur-sm shadow-sm">
-            <p class="text-xs font-bold uppercase tracking-[0.24em] text-blue-700" style="font-family: 'JetBrains Mono', monospace;">03 · seal</p>
-            <p class="mt-3 font-semibold text-slate-900">短效封印</p>
+          <div class="rounded-2xl border border-blue-200/60 bg-blue-50/50 p-5 backdrop-blur-sm shadow-sm">
+            <div class="mb-4 flex h-10 w-10 items-center justify-center rounded-xl bg-blue-100/60">
+              <Clock class="h-5 w-5 text-blue-600" />
+            </div>
+            <h3 class="text-lg font-bold text-slate-900">短效封印</h3>
             <p class="mt-1 text-sm text-slate-500">預設保留 7 天。</p>
           </div>
         </div>
