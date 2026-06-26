@@ -87,6 +87,9 @@
           <h1 class="max-w-3xl text-5xl font-black leading-[0.95] tracking-[-0.06em] text-slate-900 sm:text-7xl lg:text-8xl" style="font-family: 'Fraunces', serif;">
             Drop once.<br />Share on your own terms.
           </h1>
+          <h2 class="mt-6 text-2xl font-bold text-slate-700" style="font-family: 'Fraunces', serif;">
+            安全、快速地分享你的檔案
+          </h2>
           <p class="max-w-2xl text-lg leading-8 text-slate-600 sm:text-xl">
             把檔案投入自己的小型封存口，取得乾淨短連結；需要時再用 Access 嚴格限制存取。
           </p>
