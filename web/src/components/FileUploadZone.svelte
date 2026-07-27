@@ -46,37 +46,37 @@
 </script>
 
 {#if isUploading}
-  <div class="rounded-3xl border border-blue-200/60 bg-blue-50/50 p-8 text-center" aria-live="polite" aria-busy="true">
-    <div class="mx-auto mb-4 h-10 w-10 animate-spin rounded-full border-2 border-blue-600 border-t-transparent"></div>
-    <h3 class="text-lg font-bold text-slate-900">上傳中...</h3>
-    <p class="mt-2 text-sm text-slate-600">正在處理檔案，請稍等一下。</p>
+  <div class="rounded-xl border border-primary-border bg-primary-soft p-8 text-center" aria-live="polite" aria-busy="true">
+    <div class="mx-auto mb-4 h-10 w-10 animate-spin rounded-full border-2 border-primary border-t-transparent"></div>
+    <h3 class="text-lg font-bold text-text">上傳中...</h3>
+    <p class="mt-2 text-sm text-text-secondary">正在處理檔案，請稍等一下。</p>
   </div>
 {:else}
   <button
     type="button"
-    class="group relative w-full cursor-pointer overflow-hidden rounded-3xl border-2 border-dashed p-8 text-center transition duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 sm:p-10 {isDragOver ? 'scale-[1.01] border-blue-600 bg-blue-50/60 shadow-xl shadow-blue-900/10' : 'border-slate-300 bg-white/60 hover:border-blue-400 hover:bg-blue-50/30'}"
+    class="group relative w-full cursor-pointer overflow-hidden rounded-upload border-2 border-dashed p-8 text-center transition duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-focus sm:p-10 {isDragOver ? 'scale-[1.01] border-primary bg-surface shadow-sm' : 'border-border bg-surface hover:border-primary-focus hover:bg-primary-soft'}"
     ondragover={handleDragOver}
     ondragleave={handleDragLeave}
     ondrop={handleDrop}
     onclick={openFilePicker}
     aria-label="上傳檔案區域，點擊或拖曳檔案到此處"
   >
-    <div class="pointer-events-none absolute inset-x-8 top-0 h-1 rounded-b-full bg-gradient-to-r from-transparent via-blue-600/40 to-transparent"></div>
+    <div class="pointer-events-none absolute inset-x-8 top-0 h-1 rounded-b-full bg-primary"></div>
     <div class="space-y-5">
-      <div class="mx-auto flex h-20 w-20 items-center justify-center rounded-[1.75rem] border border-blue-200/60 bg-blue-100/50 text-blue-600 shadow-sm transition group-hover:scale-105">
+      <div class="mx-auto flex h-20 w-20 items-center justify-center rounded-xl border border-primary-border bg-primary-soft text-primary transition group-hover:scale-105">
         <Upload class="h-9 w-9" />
       </div>
 
       <div>
-        <h3 class="text-xl font-black text-slate-900">
+        <h3 class="text-xl font-bold text-text">
           拖曳檔案到這裡
         </h3>
-        <p class="mx-auto mt-2 max-w-sm text-sm leading-6 text-slate-600">
+        <p class="mx-auto mt-2 max-w-sm text-sm leading-6 text-text-secondary">
           或點擊選擇檔案。支援所有類型，上限 25MB。
         </p>
       </div>
 
-      <span class="inline-flex min-h-11 items-center justify-center gap-2 rounded-2xl bg-blue-600 px-5 py-3 text-sm font-black text-white shadow-sm transition group-hover:bg-blue-700 group-hover:shadow-md">
+      <span class="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg bg-primary px-5 py-3 text-sm font-extrabold text-on-primary transition group-hover:bg-primary-hover">
         <FileText class="h-4 w-4" />
         拖曳上傳
       </span>

@@ -26,10 +26,13 @@ folio/
 │   ├── main.rs                   # Entry point, route mounting, managed state
 │   ├── config.rs                 # Figment config (TOML + env), path normalization
 │   ├── auth.rs                   # JWT validation (RS256/JWKS + HS256), VerifiedIdentity guard
+│   ├── error.rs                  # Unified FolioError → JSON HTTP error responses
 │   ├── files.rs                  # File CRUD (GET/POST/PUT/DELETE), SafePath validation
 │   ├── uploads.rs                # Random 8-char filename, multipart upload, TTL scheduling
 │   ├── expiry.rs                 # Background sweeper (60s interval), ExpiryStore
+│   ├── path.rs                   # SafePath validation for user-supplied paths
 │   ├── private_index.rs          # Private file authorization, PrivateIndexStore
+│   ├── store.rs                  # Generic mutex-protected JSON store with atomic writes
 │   └── test_utils.rs             # Test helpers (#[cfg(test)])
 ├── web/                          # Svelte frontend
 │   ├── src/
@@ -91,6 +94,12 @@ folio/
 
 **When modifying auth**: Update both `verify_claims()` branches (RS256 + HS256).
 
+### Write-Route Boundary
+
+- `POST`, `PUT`, and `DELETE /files/<path>` do **not** apply `VerifiedIdentity` in the application.
+- Production deployments must enforce their write-route policy at Cloudflare WAF/Access and must not expose the origin in a way that bypasses those controls.
+- If application-layer write authentication is added, use the existing `VerifiedIdentity` flow and cover both RS256/JWKS and HS256 test modes.
+
 ### Private File Flow
 
 ```
@@ -136,7 +145,7 @@ email ∈ authorized_emails?
 
 1. Add field to `Folio` struct in `config.rs`
 2. Add default value in `impl Default for Folio`
-3. Reference via `&State<config::Folio>` in handlers or `config.build_full_*_path()` methods
+3. Reference via `web::Data<config::Folio>` in handlers or `config.build_full_*_path()` methods
 
 ---
 
@@ -149,8 +158,8 @@ Both `ExpiryStore` and `PrivateIndexStore` use:
 ```rust
 // Write pattern: tmp file + atomic rename
 let tmp_path = index_path.with_extension("json.tmp");
-std::fs::write(&tmp_path, content)?;
-std::fs::rename(&tmp_path, &index_path)?;
+tokio::fs::write(&tmp_path, content).await?;
+tokio::fs::rename(&tmp_path, &index_path).await?;
 ```
 
 **Why**: Prevents corruption if process crashes mid-write.
@@ -183,6 +192,17 @@ std::fs::rename(&tmp_path, &index_path)?;
 
 - **Written by**: `PrivateIndexStore::mark_private()` (called from `uploads::upload_file` when `authorized_emails` form field present)
 - **Read by**: `PrivateIndexStore::is_private()`, `get_entry()`
+
+### File and Metadata Lifecycle
+
+`JsonFileStore` protects each JSON index update with an in-process `Mutex<()>` and tmp-file-plus-rename writes. It does **not** make a filesystem mutation and its related JSON mutations transactional.
+
+- `POST /uploads` writes the file first, then marks it private (when requested), then schedules expiry. A failure after the file write can leave an orphaned file; a failed private-index write leaves that file publicly reachable unless cleanup is added.
+- Explicit-path `POST /files/<path>` and `PUT /files/<path>` bypass the random-upload size limit and expiry scheduling. Treat them as a separate, WAF-protected API contract; do not assume uploads created through them expire.
+- `DELETE /files/<path>` deletes only the file. It currently leaves any corresponding expiry or private-index entry behind; recreating that path can therefore inherit stale metadata.
+- During an expiry sweep, a failed `remove_file` is logged but its entry is still removed from the index, so the sweeper will not retry it. Preserve or requeue the entry when changing this behavior.
+
+When modifying these flows, define the failure/compensation order first and add tests for both the successful path and every metadata-write or deletion failure.
 
 ---
 
@@ -265,7 +285,7 @@ docker run -p 8080:8080 \
    }
    ```
 2. Add default in `impl Default for Folio`
-3. Access in handlers via `config: &State<config::Folio>`
+3. Access in handlers via `web::Data<config::Folio>`
 4. Add env var documentation to `README.md`
 
 ### Modifying Auth Logic
@@ -279,20 +299,21 @@ docker run -p 8080:8080 \
 
 1. Create in `web/src/components/`
 2. Use Tailwind CSS 4 for styling (no separate CSS files)
-3. Use `lucide-react` for icons
-4. Import in `App.tsx` or parent component
-5. Run `bun run type-check` to verify
+3. Use `@lucide/svelte` for icons
+4. Import in `App.svelte` or the relevant Svelte parent component
+5. Run `pnpm run check` to verify
 
 ### Modifying Upload Flow
 
 1. **`uploads::upload_file()`** handles:
    - Random filename generation (`UploadId::new(8)`)
-   - Extension detection (Content-Type > filename)
-   - File persistence (`form.file.copy_to()`)
+   - Extension detection (filename > Content-Type > no extension)
+   - Streaming multipart file persistence with `max_upload_size` enforcement
    - Private marking (`private_store.mark_private()`)
    - Expiry scheduling (`expiry_store.schedule()`)
-2. **Form fields**: Update `UploadForm` struct
-3. **Query params**: Add a `serde::Deserialize` query struct and extract it with `web::Query<T>`
+2. **Form fields**: Extend `UploadParts` and handle the field in `save_upload_payload()`
+3. **Query params**: Extend `UploadQuery` and extract it with `web::Query<UploadQuery>`
+4. Preserve cleanup behavior when introducing a failure after the file has been written.
 
 ---
 
@@ -328,13 +349,12 @@ Priority order in `uploads.rs:upload_file()`:
 - **Expiry index**: `data/expiry-index.json` (paths are **absolute**)
 - **Private index**: `data/private-files.json` (paths are **relative** to uploads root)
 
----
+### Direct File APIs
 
-## 📚 Related Documentation
-
-- **API Documentation**: See `README.md` for full API reference
-- **Security Model**: `https://gitea.home-infra.weii.cloud/home-infra/folio/wiki/Security-Model`
-- **CI/CD**: `.gitea/workflows/` — Rust test + Docker build on push/PR to `main`
+- `POST /files/<path>` creates only when the path does not exist (`409` otherwise).
+- `PUT /files/<path>` creates or overwrites; it returns `201` for a new file and `200` for an update.
+- These endpoints currently do not apply the `POST /uploads` size limit, private marking, or TTL scheduling. Do not reuse them as a drop-in replacement for the random upload flow without deciding those policies explicitly.
+- Before changing delete or expiry behavior, account for stale entries in both JSON indices.
 
 ---
 
@@ -347,8 +367,8 @@ cargo check
 # Tests pass?
 cargo test
 
-# Frontend builds?
-cd web && bun run dist
+# Frontend type-checks and builds?
+cd web && pnpm run check && pnpm run build
 
 # Full stack runs locally?
 RUST_LOG=info cargo run
@@ -357,4 +377,4 @@ RUST_LOG=info cargo run
 
 ---
 
-_Last updated: 2026-06-21. For questions or clarifications, refer to the source code comments and inline documentation._
+_Last updated: 2026-07-27. For questions or clarifications, refer to the source code comments and inline documentation._
