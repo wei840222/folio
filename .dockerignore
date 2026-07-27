@@ -11,6 +11,7 @@
 !/web/index.html
 !/web/vite.config.ts
 !/web/svelte.config.js
+!/web/theme.css
 !/web/tsconfig.app.json
 !/web/tsconfig.node.json
 !/web/tsconfig.json

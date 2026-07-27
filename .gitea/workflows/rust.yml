@@ -24,7 +24,7 @@ jobs:
         uses: arduino/setup-protoc@v3
         with:
           version: "35.1"
-          repo-token: ${{ secrets.GH_RATE_LIMIT_PAT }}
+          repo-token: ${{ secrets.GH_RATE_LIMIT_PAT || secrets.GITHUB_TOKEN }}
 
       - name: Setup Rust
         uses: actions-rust-lang/setup-rust-toolchain@v1
@@ -47,7 +47,7 @@ jobs:
       - name: Trivy vulnerability scanner
         uses: aquasecurity/trivy-action@v0.36.0
         with:
-          token-setup-trivy: ${{ secrets.GH_RATE_LIMIT_PAT }}
+          token-setup-trivy: ${{ secrets.GH_RATE_LIMIT_PAT || secrets.GITHUB_TOKEN }}
           version: v0.71.2
           scan-type: fs
           scan-ref: .
