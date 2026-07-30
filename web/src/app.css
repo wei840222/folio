@@ -1,5 +1,6 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600;700&display=swap');
 @import "tailwindcss";
+@import "../theme.css";
 
 @layer base {
   html {
@@ -39,7 +40,7 @@
 /* Silicon Hexagonal Grid & Neural Glow Background */
 .silicon-bg {
   background-color: #060913;
-  background-image: 
+  background-image:
     radial-gradient(circle at 50% 0%, rgba(0, 242, 254, 0.12) 0%, transparent 60%),
     radial-gradient(circle at 85% 60%, rgba(168, 85, 247, 0.08) 0%, transparent 50%),
     radial-gradient(circle at 15% 85%, rgba(16, 185, 129, 0.08) 0%, transparent 50%),
@@ -73,9 +74,11 @@
     top: 0%;
     opacity: 0.2;
   }
+
   50% {
     opacity: 0.9;
   }
+
   100% {
     top: 100%;
     opacity: 0.2;
@@ -114,16 +117,28 @@
   line-height: 1.7;
 }
 
-.prose-cyber h1, .prose-cyber h2, .prose-cyber h3 {
+.prose-cyber h1,
+.prose-cyber h2,
+.prose-cyber h3 {
   color: #f8fafc;
   margin-top: 1.25em;
   margin-bottom: 0.5em;
   font-weight: 700;
 }
 
-.prose-cyber h1 { font-size: 1.5rem; border-bottom: 1px solid rgba(255, 255, 255, 0.1); padding-bottom: 0.3em; }
-.prose-cyber h2 { font-size: 1.25rem; }
-.prose-cyber h3 { font-size: 1.1rem; }
+.prose-cyber h1 {
+  font-size: 1.5rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  padding-bottom: 0.3em;
+}
+
+.prose-cyber h2 {
+  font-size: 1.25rem;
+}
+
+.prose-cyber h3 {
+  font-size: 1.1rem;
+}
 
 .prose-cyber code {
   background: rgba(0, 0, 0, 0.4);
@@ -164,4 +179,3 @@
   margin: 1rem 0;
   background: rgba(0, 242, 254, 0.05);
 }
-
