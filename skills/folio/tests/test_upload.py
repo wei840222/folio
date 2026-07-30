@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import importlib.util
 import io
+import os
 import pathlib
 import sys
 import unittest
@@ -15,10 +16,22 @@ SPEC.loader.exec_module(upload)
 
 
 class FakeResponse:
-    def __init__(self, status_code=201, location="/files/random.pdf", text=""):
+    def __init__(
+        self,
+        status_code=201,
+        location="/files/random.pdf",
+        text="",
+        json_data=None,
+    ):
         self.status_code = status_code
         self.headers = {"location": location} if location is not None else {}
         self.text = text
+        self.json_data = (
+            {"expires_at": 1_900_000_000} if json_data is None else json_data
+        )
+
+    def json(self):
+        return self.json_data
 
 
 class UploadScriptTests(unittest.TestCase):
@@ -31,6 +44,9 @@ class UploadScriptTests(unittest.TestCase):
         self.args_patch = mock.patch.object(sys, "argv", self.argv)
         self.args_patch.start()
         self.addCleanup(self.args_patch.stop)
+        self.token_patch = mock.patch.dict(os.environ, {"FOLIO_UPLOAD_TOKEN": ""})
+        self.token_patch.start()
+        self.addCleanup(self.token_patch.stop)
 
     def test_resolves_relative_and_absolute_locations(self):
         self.assertEqual(
@@ -71,7 +87,10 @@ class UploadScriptTests(unittest.TestCase):
 
         output_lines = stdout.getvalue().strip().splitlines()
         self.assertEqual(output_lines[0], "https://example.test/files/random.pdf")
-        self.assertRegex(output_lines[1], r"^Expires: \d{4}-\d{2}-\d{2}T")
+        self.assertEqual(
+            output_lines[1],
+            f"Expires: {upload.expiration_timestamp(1_900_000_000)}",
+        )
         self.assertEqual(post.call_args.kwargs["params"], {"expire": "7d"})
         self.assertEqual(
             post.call_args.kwargs["data"],
@@ -79,6 +98,37 @@ class UploadScriptTests(unittest.TestCase):
         )
         self.assertFalse(post.call_args.kwargs["allow_redirects"])
         self.assertEqual(post.call_args.kwargs["timeout"], 120)
+
+    def test_omitted_expiry_uses_server_expiration(self):
+        response = FakeResponse(json_data={"expires_at": 2_000_000_000})
+        with mock.patch.object(upload.ua_generator, "generate") as generate:
+            generate.return_value.text = "test-agent"
+            with mock.patch.object(upload.requests, "post", return_value=response) as post:
+                with mock.patch("builtins.open", mock.mock_open(read_data=b"pdf")):
+                    with mock.patch("sys.stdout", new_callable=io.StringIO) as stdout:
+                        upload.main()
+
+        self.assertEqual(post.call_args.kwargs["params"], {})
+        self.assertIn(
+            f"Expires: {upload.expiration_timestamp(2_000_000_000)}",
+            stdout.getvalue(),
+        )
+
+    def test_upload_token_is_sent_as_bearer_without_being_printed(self):
+        response = FakeResponse()
+        with mock.patch.dict(os.environ, {"FOLIO_UPLOAD_TOKEN": "cli-secret"}):
+            with mock.patch.object(upload.ua_generator, "generate") as generate:
+                generate.return_value.text = "test-agent"
+                with mock.patch.object(upload.requests, "post", return_value=response) as post:
+                    with mock.patch("builtins.open", mock.mock_open(read_data=b"pdf")):
+                        with mock.patch("sys.stdout", new_callable=io.StringIO) as stdout:
+                            upload.main()
+
+        self.assertEqual(
+            post.call_args.kwargs["headers"]["Authorization"],
+            "Bearer cli-secret",
+        )
+        self.assertNotIn("cli-secret", stdout.getvalue())
 
     def test_missing_location_is_failure(self):
         response = FakeResponse(location=None)
@@ -89,6 +139,30 @@ class UploadScriptTests(unittest.TestCase):
                     with self.assertRaises(SystemExit) as error:
                         upload.main()
         self.assertEqual(error.exception.code, 1)
+
+    def test_redirect_response_is_failure(self):
+        response = FakeResponse(status_code=302)
+        with mock.patch.object(upload.ua_generator, "generate") as generate:
+            generate.return_value.text = "test-agent"
+            with mock.patch.object(upload.requests, "post", return_value=response):
+                with mock.patch("builtins.open", mock.mock_open(read_data=b"pdf")):
+                    with self.assertRaises(SystemExit) as error:
+                        upload.main()
+        self.assertEqual(error.exception.code, 1)
+
+    def test_invalid_server_expiration_preserves_successful_upload_url(self):
+        response = FakeResponse(json_data={"expires_at": "not-a-timestamp"})
+        with mock.patch.object(upload.ua_generator, "generate") as generate:
+            generate.return_value.text = "test-agent"
+            with mock.patch.object(upload.requests, "post", return_value=response):
+                with mock.patch("builtins.open", mock.mock_open(read_data=b"pdf")):
+                    with mock.patch("sys.stdout", new_callable=io.StringIO) as stdout:
+                        upload.main()
+
+        self.assertEqual(
+            stdout.getvalue().strip().splitlines(),
+            ["https://example.test/files/random.pdf", "Expires: unavailable"],
+        )
 
     def test_non_success_response_is_failure(self):
         response = FakeResponse(status_code=413, text="too large")

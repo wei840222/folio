@@ -120,6 +120,8 @@ Configured with `Folio.toml` and/or environment variables.
 | `web_path`     | `FOLIO_WEB_PATH`     | `./web/dist` | Path to static web assets              |
 | `uploads_path` | `FOLIO_UPLOADS_PATH` | `./uploads`  | Upload storage path                    |
 | `data_path`    | `FOLIO_DATA_PATH`    | `./data`     | Persistent metadata (index/state) path |
+| `default_upload_ttl_secs` | `FOLIO_DEFAULT_UPLOAD_TTL_SECS` | `604800` | Positive default upload TTL when `expire` is omitted |
+| `max_upload_ttl_secs` | `FOLIO_MAX_UPLOAD_TTL_SECS` | `604800` | Positive maximum accepted upload TTL; must be at least the default and produce a client-representable expiration timestamp |
 
 ### Private access (Cloudflare Access)
 
@@ -129,6 +131,27 @@ Configured with `Folio.toml` and/or environment variables.
 | `FOLIO_CF_ACCESS_AUD`          | _(empty)_                              | Expected audience (required for production)        |
 | `FOLIO_CF_ACCESS_JWKS_URL`     | `${ISSUER}/cdn-cgi/access/certs`       | JWK Set URL for signature verification             |
 | `FOLIO_CF_ACCESS_HS256_SECRET` | _(unset)_                              | Optional HS256 verifier secret (for local testing) |
+
+### Upload Protection (Rate Limiting & Challenge)
+
+| Environment Variable               | Default | Description                                                                                          |
+| ---------------------------------- | ------- | ---------------------------------------------------------------------------------------------------- |
+| `FOLIO_UPLOAD_RATE_SOFT_LIMIT`     | `5`     | Requests per window before Turnstile challenge is required; must not exceed the hard limit            |
+| `FOLIO_UPLOAD_RATE_HARD_LIMIT`     | `20`    | Hard rate limit (requests per window), accepted range `0..=100`; returns 429 when exceeded             |
+| `FOLIO_UPLOAD_RATE_WINDOW_SECS`    | `60`    | Time window in seconds for rate counting                                                             |
+| `FOLIO_TURNSTILE_PASS_TTL_SECS`  | `600`   | Duration (seconds) of the HttpOnly upload-pass cookie after successful Turnstile challenge           |
+| `FOLIO_MIN_FREE_DISK_BYTES`      | `1073741824` | Minimum free disk space (1 GiB by default) required to accept uploads. Set to 0 to disable the check |
+| `FOLIO_TRUST_CF_CONNECTING_IP`   | `false` | Trust `CF-Connecting-IP` header for client IP (only enable when behind Cloudflare proxy)             |
+| `FOLIO_UPLOAD_TOKEN`             | _(unset)_ | Bearer token for CLI/automated uploads. Bypasses Turnstile challenge but still subject to rate limits |
+| `FOLIO_TURNSTILE_SITE_KEY`       | _(unset)_ | Cloudflare Turnstile site key for frontend challenge widget                                          |
+| `FOLIO_TURNSTILE_SECRET`         | _(unset)_ | Cloudflare Turnstile secret key for server-side verification                                         |
+| `FOLIO_TURNSTILE_HOSTNAME`       | _(unset)_ | Expected hostname in Turnstile response (for validation)                                             |
+| `FOLIO_TURNSTILE_SITEVERIFY_URL` | `https://challenges.cloudflare.com/turnstile/v0/siteverify` | Turnstile siteverify API endpoint (override for testing) |
+| `FOLIO_MAX_CONCURRENT_UPLOADS`   | `4`     | Maximum number of concurrent uploads allowed system-wide                                               |
+
+`FOLIO_TURNSTILE_SITE_KEY`, `FOLIO_TURNSTILE_SECRET`, and `FOLIO_TURNSTILE_HOSTNAME` must be configured together. Folio refuses to start when only part of this set is configured.
+
+Uploads are streamed into the internal `.folio-staging` directory and published only after metadata is committed. Failed requests clean their staging file immediately; service startup removes stranded staging files and metadata entries whose final file was never published.
 
 Authorization is per-file based. Access lists are defined during upload via the `authorized_emails` field.
 
@@ -201,6 +224,8 @@ Upload a file with generated ID-based filename.
 | `file`              |    ✅    | File   | File payload                                                                                                                |
 | `authorized_emails` |    ❌    | String | Comma-separated list of emails allowed to access this file. Presence of this field automatically marks the file as private. |
 
+Unknown or duplicate form fields are rejected. The complete raw multipart body, including field headers and boundaries, is size-limited and must finish within 120 seconds.
+
 **Note on file extensions:**
 
 The server determines file extension in the following order:
@@ -212,6 +237,9 @@ Response:
 
 - `201 Created`
 - `Location` header: `/files/<generated-name>`
+- JSON body: `{ "message": "file uploaded successfully", "expires_at": <unix-seconds> }`
+
+`expires_at` is the authoritative expiration calculated by the server and should be used instead of deriving an expiration from the client clock.
 
 **Example (Public):**
 

@@ -4,6 +4,7 @@ use std::sync::Arc;
 use actix_files::NamedFile;
 use actix_multipart::Multipart;
 use actix_web::http::StatusCode;
+use actix_web::http::header::{ContentDisposition, DispositionType, HeaderName, HeaderValue};
 use actix_web::{HttpRequest, HttpResponse, Responder, delete, get, post, put, web};
 use futures_util::StreamExt;
 use serde_json::json;
@@ -31,7 +32,18 @@ fn ensure_parent_dirs(path: &Path) -> Result<(), FolioError> {
 }
 
 fn validate_path(path: web::Path<String>) -> Result<SafePath, FolioError> {
-    SafePath::from_user_input(Path::new(path.as_str()))
+    let path = SafePath::from_user_input(Path::new(path.as_str()))?;
+    if path
+        .as_path()
+        .components()
+        .next()
+        .is_some_and(|component| component.as_os_str() == config::UPLOAD_STAGING_DIR)
+    {
+        return Err(FolioError::NotFound {
+            path: path.to_string(),
+        });
+    }
+    Ok(path)
 }
 
 async fn save_file_field(mut payload: Multipart, full_path: &Path) -> Result<(), FolioError> {
@@ -114,7 +126,7 @@ pub async fn get_file(
             .finish());
     }
 
-    Ok(open_upload_file(&config, &path).await?.into_response(&req))
+    open_upload_file(&req, &config, &path).await
 }
 
 #[get("/private-files/{path:.*}")]
@@ -124,7 +136,7 @@ pub async fn get_private_file(
     private_index: web::Data<Arc<PrivateIndexStore>>,
     access_auth: web::Data<Arc<AccessAuth>>,
     path: web::Path<String>,
-) -> Result<NamedFile, FolioError> {
+) -> Result<HttpResponse, FolioError> {
     let path = validate_path(path)?;
     let identity = VerifiedIdentity::from_request(&req, &access_auth)
         .await
@@ -163,13 +175,14 @@ pub async fn get_private_file(
         path
     );
 
-    open_upload_file(&config, &path).await
+    open_upload_file(&req, &config, &path).await
 }
 
 async fn open_upload_file(
+    request: &HttpRequest,
     config: &config::Folio,
     path: &SafePath,
-) -> Result<NamedFile, FolioError> {
+) -> Result<HttpResponse, FolioError> {
     let full_path = config.build_full_upload_path(&PathBuf::from(path.as_path()));
 
     if !full_path.exists() {
@@ -184,12 +197,41 @@ async fn open_upload_file(
         });
     }
 
-    NamedFile::open_async(full_path)
+    let file = NamedFile::open_async(&full_path)
         .await
         .map_err(|e| FolioError::Internal {
             source: format!("failed to open file: {}", e),
             context: Some(format!("open file: {}", path)),
+        })?;
+
+    let is_active_content = matches!(
+        file.content_type().essence_str(),
+        "text/html"
+            | "application/xhtml+xml"
+            | "image/svg+xml"
+            | "application/javascript"
+            | "text/javascript"
+            | "text/xml"
+            | "application/xml"
+    );
+
+    let disposition = if is_active_content {
+        DispositionType::Attachment
+    } else {
+        DispositionType::Inline
+    };
+
+    let mut response = file
+        .set_content_disposition(ContentDisposition {
+            disposition,
+            parameters: Vec::new(),
         })
+        .into_response(request);
+    response.headers_mut().insert(
+        HeaderName::from_static("x-content-type-options"),
+        HeaderValue::from_static("nosniff"),
+    );
+    Ok(response)
 }
 
 #[post("/files/{path:.*}")]
@@ -580,6 +622,53 @@ mod tests {
         assert_eq!(response.status(), StatusCode::OK);
         let body = test::read_body(response).await;
         assert_eq!(body, "public-content");
+    }
+
+    #[actix_web::test]
+    async fn get_public_file_supports_byte_ranges() {
+        let (config, private_index, access_auth, temp_dir) = test_state();
+        std::fs::write(temp_dir.path().join("public.txt"), "public-content").unwrap();
+        let app = test::init_service(
+            App::new()
+                .app_data(web::Data::new(config))
+                .app_data(web::Data::new(private_index))
+                .app_data(web::Data::new(access_auth))
+                .service(get_file),
+        )
+        .await;
+
+        let req = test::TestRequest::get()
+            .uri("/files/public.txt")
+            .insert_header((header::RANGE, "bytes=0-5"))
+            .to_request();
+        let response = test::call_service(&app, req).await;
+
+        assert_eq!(response.status(), StatusCode::PARTIAL_CONTENT);
+        let body = test::read_body(response).await;
+        assert_eq!(body, "public");
+    }
+
+    #[actix_web::test]
+    async fn internal_upload_staging_files_are_not_served() {
+        let (config, private_index, access_auth, temp_dir) = test_state();
+        let staging_dir = temp_dir.path().join(".folio-staging");
+        std::fs::create_dir(&staging_dir).unwrap();
+        std::fs::write(staging_dir.join("partial.txt"), "partial-content").unwrap();
+        let app = test::init_service(
+            App::new()
+                .app_data(web::Data::new(config))
+                .app_data(web::Data::new(private_index))
+                .app_data(web::Data::new(access_auth))
+                .service(get_file),
+        )
+        .await;
+
+        let req = test::TestRequest::get()
+            .uri("/files/.folio-staging/partial.txt")
+            .to_request();
+        let response = test::call_service(&app, req).await;
+
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
     }
 
     #[actix_web::test]

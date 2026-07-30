@@ -6,7 +6,7 @@
 # ]
 # ///
 import argparse
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 import os
 import re
 import sys
@@ -16,7 +16,6 @@ import ua_generator
 
 
 MAX_DURATION_VALUE = 10_000_000
-DEFAULT_EXPIRY = "7d"
 DEFAULT_TIMEOUT_SECONDS = 120
 DEFAULT_UPLOAD_URL = "https://folio.weii.cloud/uploads"
 DURATION_PATTERN = re.compile(r"^(\d+)([smhd])$")
@@ -56,14 +55,17 @@ def emails_arg(value):
     return ",".join(emails)
 
 
-def duration_seconds(value):
-    amount, unit = DURATION_PATTERN.fullmatch(value).groups()
-    multipliers = {"s": 1, "m": 60, "h": 3600, "d": 86400}
-    return int(amount) * multipliers[unit]
+def expiration_timestamp(expires_at):
+    if isinstance(expires_at, bool) or not isinstance(expires_at, int) or expires_at < 0:
+        raise ValueError("expires_at must be a non-negative integer")
+    return datetime.fromtimestamp(expires_at, timezone.utc).isoformat()
 
 
-def expiration_timestamp(expire):
-    return (datetime.now(timezone.utc) + timedelta(seconds=duration_seconds(expire))).isoformat()
+def response_expiration(response):
+    try:
+        return expiration_timestamp(response.json().get("expires_at"))
+    except (AttributeError, OSError, OverflowError, TypeError, ValueError):
+        return None
 
 
 def resolve_location(upload_url, location):
@@ -113,6 +115,9 @@ def main():
     headers = {
         'User-Agent': ua.text
     }
+    upload_token = os.environ.get('FOLIO_UPLOAD_TOKEN')
+    if upload_token:
+        headers['Authorization'] = f'Bearer {upload_token}'
 
     # Prepare parameters
     params = {}
@@ -134,7 +139,7 @@ def main():
     try:
         with open(args.file, 'rb') as f:
             files = {'file': (filename, f, mime_type)}
-            # We use allow_redirects=False to catch the 201/302 location header
+            # Do not follow redirects: only the API's 201 response is a successful upload.
             response = requests.post(
                 args.url,
                 headers=headers,
@@ -145,12 +150,13 @@ def main():
                 timeout=args.timeout,
             )
 
-        if response.status_code in [201, 302]:
+        if response.status_code == 201:
             location = response.headers.get('location')
             if location:
                 full_url = resolve_location(args.url, location)
                 print(full_url)
-                print(f"Expires: {expiration_timestamp(args.expire or DEFAULT_EXPIRY)}")
+                expires_at = response_expiration(response)
+                print(f"Expires: {expires_at}" if expires_at else "Expires: unavailable")
             else:
                 print(f"Error: Upload successful but no Location header found. Status: {response.status_code}")
                 sys.exit(1)

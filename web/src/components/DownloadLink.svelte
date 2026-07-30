@@ -1,9 +1,17 @@
 <script lang="ts">
   import { Copy, Check } from '@lucide/svelte';
 
-  let { url }: { url: string } = $props();
+  let { url, expiresAt }: { url: string; expiresAt: number | null } = $props();
 
   let copied = $state(false);
+  let expirationLabel = $derived(
+    expiresAt === null
+      ? null
+      : new Intl.DateTimeFormat('zh-TW', {
+          dateStyle: 'medium',
+          timeStyle: 'short',
+        }).format(new Date(expiresAt * 1000)),
+  );
 
   async function copyToClipboard() {
     try {
@@ -48,6 +56,6 @@
   </div>
 
   <p class="text-center text-xs text-text-muted">
-    預設保留 7 天，到期後自動刪除
+    到期時間：{expirationLabel ?? '無法顯示'}
   </p>
 </div>

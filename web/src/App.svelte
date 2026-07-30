@@ -2,15 +2,31 @@
   import { Upload, Download, ShieldCheck } from '@lucide/svelte';
   import FileUploadZone from './components/FileUploadZone.svelte';
   import DownloadLink from './components/DownloadLink.svelte';
+  import TurnstileWidget from './components/TurnstileWidget.svelte';
+  import { readExpiresAt } from './uploadResponse';
+  import {
+    beginChallengeAttempt,
+    canCancelChallenge,
+    classifyChallengeFailure,
+    isCurrentChallengeAttempt,
+  } from './uploadRetry';
 
   let uploadedFile = $state<File | null>(null);
   let isUploading = $state(false);
   let shortUrl = $state('');
+  let expiresAt = $state<number | null>(null);
   let uploadError = $state('');
+  let showTurnstile = $state(false);
+  let turnstileSiteKey = $state('');
+  let pendingFile = $state<File | null>(null);
+  let turnstileAttempt = $state(0);
+  let uploadGeneration = $state(0);
+
 
   async function handleFileUpload(file: File) {
     isUploading = true;
     uploadError = '';
+    showTurnstile = false;
 
     const formData = new FormData();
     formData.append('file', file);
@@ -20,6 +36,19 @@
         method: 'POST',
         body: formData,
       });
+
+      if (res.status === 429) {
+        const data = await res.json();
+        if (data.code === 'challenge_required' && data.turnstile_site_key) {
+          pendingFile = file;
+          turnstileSiteKey = data.turnstile_site_key;
+          turnstileAttempt += 1;
+          showTurnstile = true;
+          isUploading = false;
+          return;
+        }
+      }
+
       if (!res.ok) {
         throw new Error('上傳失敗');
       }
@@ -31,6 +60,7 @@
 
       shortUrl = `${window.location.origin}${location}`;
       uploadedFile = file;
+      expiresAt = await readExpiresAt(res);
     } catch (error) {
       console.error('上傳錯誤:', error);
       uploadError = '檔案上傳失敗，請稍後再試。';
@@ -40,10 +70,81 @@
     }
   }
 
+  async function handleTurnstileSuccess(token: string) {
+    const attempt = beginChallengeAttempt(uploadGeneration, pendingFile);
+    if (!attempt) return;
+
+    isUploading = true;
+    uploadError = '';
+
+    const formData = new FormData();
+    formData.append('file', attempt.file);
+
+    try {
+      const res = await fetch('/uploads', {
+        method: 'POST',
+        body: formData,
+        headers: {
+          'X-Turnstile-Token': token,
+        },
+      });
+
+      if (!isCurrentChallengeAttempt(uploadGeneration, attempt)) return;
+
+      if (!res.ok) {
+        const body: unknown = await res.json().catch(() => null);
+        const code =
+          typeof body === 'object' && body !== null && 'code' in body && typeof body.code === 'string'
+            ? body.code
+            : undefined;
+        const failure = classifyChallengeFailure(res.status, code);
+        uploadError = failure.message;
+        if (failure.retryChallenge) {
+          turnstileAttempt += 1;
+        } else {
+          showTurnstile = false;
+          pendingFile = null;
+        }
+        return;
+      }
+
+      const location = res.headers.get('Location');
+      if (!location) {
+        throw new Error('上傳回應缺少下載位置');
+      }
+
+      shortUrl = `${window.location.origin}${location}`;
+      uploadedFile = attempt.file;
+      expiresAt = await readExpiresAt(res);
+      showTurnstile = false;
+      pendingFile = null;
+    } catch (error) {
+      if (!isCurrentChallengeAttempt(uploadGeneration, attempt)) return;
+      console.error('驗證後上傳錯誤:', error);
+      uploadError = '驗證後上傳失敗，請再完成一次驗證。';
+      turnstileAttempt += 1;
+      return;
+    } finally {
+      if (isCurrentChallengeAttempt(uploadGeneration, attempt)) {
+        isUploading = false;
+      }
+    }
+  }
+
   function handleReset() {
+    if (!canCancelChallenge(isUploading)) return;
+    uploadGeneration += 1;
     uploadedFile = null;
     shortUrl = '';
+    expiresAt = null;
     uploadError = '';
+    showTurnstile = false;
+    pendingFile = null;
+    turnstileAttempt = 0;
+  }
+
+  function handleTurnstileLoadError(message: string) {
+    uploadError = message;
   }
 </script>
 
@@ -91,7 +192,7 @@
         <ul class="flex flex-wrap gap-x-5 gap-y-2 text-sm text-text-secondary" aria-label="服務特性">
           <li>支援所有檔案類型</li>
           <li class="before:mr-5 before:text-primary before:content-['•']">檔案大小上限 25MB</li>
-          <li class="before:mr-5 before:text-primary before:content-['•']">預設保留 7 天</li>
+          <li class="before:mr-5 before:text-primary before:content-['•']">到期時間由伺服器設定</li>
         </ul>
       </div>
 
@@ -111,9 +212,7 @@
             </div>
           {/if}
 
-          {#if !uploadedFile}
-            <FileUploadZone onfileselect={handleFileUpload} {isUploading} />
-          {:else}
+          {#if uploadedFile}
             <div class="space-y-5">
               <div class="rounded-xl border border-success-border bg-success-surface p-4">
                 <div class="flex items-center gap-4">
@@ -138,7 +237,7 @@
               </div>
 
               {#if shortUrl}
-                <DownloadLink url={shortUrl} />
+                <DownloadLink url={shortUrl} {expiresAt} />
               {/if}
 
               <button
@@ -149,6 +248,28 @@
                 上傳新檔案
               </button>
             </div>
+          {:else if showTurnstile && turnstileSiteKey}
+            <div class="mb-5 rounded-lg border border-primary-border bg-primary-soft px-4 py-3 text-center">
+              <p class="mb-3 text-sm font-semibold text-text">需要額外驗證</p>
+              <p class="mb-4 text-xs text-text-secondary">請完成以下驗證以繼續上傳</p>
+              {#key turnstileAttempt}
+                <TurnstileWidget
+                  siteKey={turnstileSiteKey}
+                  onsuccess={handleTurnstileSuccess}
+                  onloaderror={handleTurnstileLoadError}
+                />
+              {/key}
+              <button
+                type="button"
+                onclick={handleReset}
+                disabled={!canCancelChallenge(isUploading)}
+                class="mt-4 min-h-11 w-full cursor-pointer rounded-lg border border-border bg-surface px-4 py-3 text-sm font-bold text-text-secondary transition hover:border-primary-border hover:bg-primary-soft hover:text-primary-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-focus disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {isUploading ? '上傳中…' : '取消上傳'}
+              </button>
+            </div>
+          {:else}
+            <FileUploadZone onfileselect={handleFileUpload} {isUploading} />
           {/if}
       </section>
     </section>

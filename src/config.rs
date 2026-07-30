@@ -1,5 +1,9 @@
 use serde::{Deserialize, Serialize};
 use std::path::{Component, Path, PathBuf};
+use std::time::{SystemTime, UNIX_EPOCH};
+
+pub const UPLOAD_STAGING_DIR: &str = ".folio-staging";
+pub const MAX_CLIENT_EXPIRY_UNIX_SECS: u64 = 253_402_300_799;
 
 #[derive(Debug, Deserialize, Serialize)]
 pub struct Folio {
@@ -9,9 +13,45 @@ pub struct Folio {
     pub uploads_path: String,
     pub data_path: String,
     pub max_upload_size: usize,
+    pub default_upload_ttl_secs: u64,
+    pub max_upload_ttl_secs: u64,
+    pub max_upload_text_field_size: usize,
+    pub max_authorized_emails: usize,
 }
 
 impl Folio {
+    pub fn validate(&self) -> Result<(), String> {
+        let now_unix_secs = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map_err(|_| "system clock is before the Unix epoch".to_string())?
+            .as_secs();
+        self.validate_at(now_unix_secs)
+    }
+
+    fn validate_at(&self, now_unix_secs: u64) -> Result<(), String> {
+        if self.max_upload_ttl_secs == 0 {
+            return Err("maximum upload TTL must be greater than zero".to_string());
+        }
+        if self.default_upload_ttl_secs == 0 {
+            return Err("default upload TTL must be greater than zero".to_string());
+        }
+        if self.default_upload_ttl_secs > self.max_upload_ttl_secs {
+            return Err(format!(
+                "default upload TTL ({} seconds) exceeds maximum ({} seconds)",
+                self.default_upload_ttl_secs, self.max_upload_ttl_secs
+            ));
+        }
+        if now_unix_secs
+            .checked_add(self.max_upload_ttl_secs)
+            .is_none_or(|expires_at| expires_at > MAX_CLIENT_EXPIRY_UNIX_SECS)
+        {
+            return Err(format!(
+                "maximum upload TTL would exceed client expiration limit ({MAX_CLIENT_EXPIRY_UNIX_SECS})"
+            ));
+        }
+        Ok(())
+    }
+
     pub fn resolve_base(&self, path_str: &str) -> PathBuf {
         let p = PathBuf::from(path_str);
         if p.is_absolute() {
@@ -26,6 +66,13 @@ impl Folio {
     /// Build full file path for uploads with normalized path
     pub fn build_full_upload_path(&self, relative_path: &Path) -> PathBuf {
         self.normalize_and_join(&self.resolve_base(&self.uploads_path), relative_path)
+    }
+
+    pub fn build_upload_staging_path(&self, relative_path: &Path) -> PathBuf {
+        let staging_root = self
+            .resolve_base(&self.uploads_path)
+            .join(UPLOAD_STAGING_DIR);
+        self.normalize_and_join(&staging_root, relative_path)
     }
 
     /// Build full file path for persistent data
@@ -75,6 +122,10 @@ impl Default for Folio {
             uploads_path: String::from("./uploads"),
             data_path: String::from("./data"),
             max_upload_size: 25 * 1024 * 1024, // 25 MiB
+            default_upload_ttl_secs: 7 * 24 * 60 * 60,
+            max_upload_ttl_secs: 7 * 24 * 60 * 60,
+            max_upload_text_field_size: 4 * 1024,
+            max_authorized_emails: 50,
         }
     }
 }
@@ -91,6 +142,82 @@ mod tests {
         assert_eq!(config.web_path, "./web/dist");
         assert_eq!(config.uploads_path, "./uploads");
         assert_eq!(config.max_upload_size, 25 * 1024 * 1024);
+        assert_eq!(config.default_upload_ttl_secs, 7 * 24 * 60 * 60);
+        assert_eq!(config.max_upload_ttl_secs, 7 * 24 * 60 * 60);
+        assert_eq!(config.max_upload_text_field_size, 4 * 1024);
+        assert_eq!(config.max_authorized_emails, 50);
+    }
+
+    #[test]
+    fn rejects_default_upload_ttl_above_maximum() {
+        let config = Folio {
+            default_upload_ttl_secs: 121,
+            max_upload_ttl_secs: 120,
+            ..Folio::default()
+        };
+
+        assert_eq!(
+            config.validate(),
+            Err("default upload TTL (121 seconds) exceeds maximum (120 seconds)".to_string())
+        );
+    }
+
+    #[test]
+    fn rejects_zero_default_upload_ttl() {
+        let config = Folio {
+            default_upload_ttl_secs: 0,
+            max_upload_ttl_secs: 1,
+            ..Folio::default()
+        };
+
+        assert_eq!(
+            config.validate_at(1_000),
+            Err("default upload TTL must be greater than zero".to_string())
+        );
+    }
+
+    #[test]
+    fn rejects_zero_maximum_upload_ttl() {
+        let config = Folio {
+            default_upload_ttl_secs: 0,
+            max_upload_ttl_secs: 0,
+            ..Folio::default()
+        };
+
+        assert_eq!(
+            config.validate_at(1_000),
+            Err("maximum upload TTL must be greater than zero".to_string())
+        );
+    }
+
+    #[test]
+    fn accepts_maximum_ttl_that_reaches_client_expiration_limit() {
+        let config = Folio {
+            default_upload_ttl_secs: 100,
+            max_upload_ttl_secs: 100,
+            ..Folio::default()
+        };
+
+        assert_eq!(
+            config.validate_at(MAX_CLIENT_EXPIRY_UNIX_SECS - 100),
+            Ok(())
+        );
+    }
+
+    #[test]
+    fn rejects_maximum_ttl_beyond_client_expiration_limit() {
+        let config = Folio {
+            default_upload_ttl_secs: 100,
+            max_upload_ttl_secs: 101,
+            ..Folio::default()
+        };
+
+        assert_eq!(
+            config.validate_at(MAX_CLIENT_EXPIRY_UNIX_SECS - 100),
+            Err(format!(
+                "maximum upload TTL would exceed client expiration limit ({MAX_CLIENT_EXPIRY_UNIX_SECS})"
+            ))
+        );
     }
 
     mod build_full_upload_path {
@@ -155,6 +282,10 @@ mod tests {
                 uploads_path: String::from("./custom_uploads"),
                 data_path: String::from("./data"),
                 max_upload_size: 25 * 1024 * 1024,
+                default_upload_ttl_secs: 7 * 24 * 60 * 60,
+                max_upload_ttl_secs: 7 * 24 * 60 * 60,
+                max_upload_text_field_size: 4 * 1024,
+                max_authorized_emails: 50,
             };
             let path = config.build_full_upload_path(&PathBuf::from("test.txt"));
 
@@ -181,6 +312,10 @@ mod tests {
                 uploads_path: String::from("/tmp/test_uploads"),
                 data_path: String::from("./data"),
                 max_upload_size: 25 * 1024 * 1024,
+                default_upload_ttl_secs: 7 * 24 * 60 * 60,
+                max_upload_ttl_secs: 7 * 24 * 60 * 60,
+                max_upload_text_field_size: 4 * 1024,
+                max_authorized_emails: 50,
             };
             let path = config.build_full_upload_path(&PathBuf::from("test.txt"));
 

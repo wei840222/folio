@@ -477,7 +477,7 @@ mod tests {
             Some("allowed@example.com"),
             &["team-a"],
             "https://issuer.example.com",
-            &["folio-app"],
+            ["folio-app"],
             3600,
         );
 

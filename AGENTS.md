@@ -131,6 +131,8 @@ email ∈ authorized_emails?
 | `web_path` | `FOLIO_WEB_PATH` | `./web/dist` | Svelte build output path |
 | `uploads_path` | `FOLIO_UPLOADS_PATH` | `./uploads` | Uploaded files storage |
 | `data_path` | `FOLIO_DATA_PATH` | `./data` | JSON index files location |
+| `default_upload_ttl_secs` | `FOLIO_DEFAULT_UPLOAD_TTL_SECS` | `604800` | Positive default TTL when `expire` is omitted |
+| `max_upload_ttl_secs` | `FOLIO_MAX_UPLOAD_TTL_SECS` | `604800` | Positive maximum accepted TTL; must be at least the default and produce a client-representable expiration timestamp |
 
 ### Cloudflare Access Settings (`auth.rs:from_env()`)
 
@@ -140,6 +142,25 @@ email ∈ authorized_emails?
 | `FOLIO_CF_ACCESS_AUD` | _(empty)_ | JWT audience (required for prod) |
 | `FOLIO_CF_ACCESS_JWKS_URL` | `${ISSUER}/cdn-cgi/access/certs` | JWKS endpoint |
 | `FOLIO_CF_ACCESS_HS256_SECRET` | _(unset)_ | HS256 secret (dev/test only) |
+
+### Upload Protection Settings (`upload_protection.rs:from_env()`)
+
+| Env Var | Default | Description |
+|---------|---------|-------------|
+| `FOLIO_UPLOAD_RATE_SOFT_LIMIT` | `5` | Requests per window before Turnstile challenge; must not exceed the hard limit |
+| `FOLIO_UPLOAD_RATE_HARD_LIMIT` | `20` | Hard rate limit (`0..=100`; 429 when exceeded) |
+| `FOLIO_UPLOAD_RATE_WINDOW_SECS` | `60` | Time window for rate counting |
+| `FOLIO_TURNSTILE_PASS_TTL_SECS` | `600` | HttpOnly upload-pass cookie duration |
+| `FOLIO_MIN_FREE_DISK_BYTES` | `1073741824` | Minimum free disk space (1 GiB by default; 0 = disabled) |
+| `FOLIO_TRUST_CF_CONNECTING_IP` | `false` | Trust CF-Connecting-IP header (enable behind Cloudflare) |
+| `FOLIO_UPLOAD_TOKEN` | _(unset)_ | Bearer token for CLI uploads (bypasses Turnstile) |
+| `FOLIO_TURNSTILE_SITE_KEY` | _(unset)_ | Turnstile site key for frontend widget |
+| `FOLIO_TURNSTILE_SECRET` | _(unset)_ | Turnstile secret for server verification |
+| `FOLIO_TURNSTILE_HOSTNAME` | _(unset)_ | Expected hostname in Turnstile response |
+| `FOLIO_TURNSTILE_SITEVERIFY_URL` | `https://challenges.cloudflare.com/turnstile/v0/siteverify` | Turnstile API endpoint |
+| `FOLIO_MAX_CONCURRENT_UPLOADS` | `4` | System-wide concurrent upload limit |
+
+The Turnstile site key, secret, and expected hostname are an all-or-none configuration set. Partial configuration is rejected at startup.
 
 ### Adding New Config Fields
 
@@ -174,7 +195,7 @@ tokio::fs::rename(&tmp_path, &index_path).await?;
 }
 ```
 
-- **Written by**: `ExpiryStore::schedule()` (called from `uploads::upload_file`)
+- **Written by**: `ExpiryStore::publish()` (called from `uploads::upload_file`)
 - **Read/Cleaned by**: `ExpiryStore::sweep_once()` (background thread, 60s interval)
 
 ### `data/private-files.json`
@@ -197,9 +218,11 @@ tokio::fs::rename(&tmp_path, &index_path).await?;
 
 `JsonFileStore` protects each JSON index update with an in-process `Mutex<()>` and tmp-file-plus-rename writes. It does **not** make a filesystem mutation and its related JSON mutations transactional.
 
-- `POST /uploads` writes the file first, then marks it private (when requested), then schedules expiry. A failure after the file write can leave an orphaned file; a failed private-index write leaves that file publicly reachable unless cleanup is added.
+Random uploads are first written under the non-served `.folio-staging` directory. `ExpiryStore::publish()` holds the expiry-store lock while registering expiry and atomically creating a no-clobber final link; startup removes stranded staging files and private/expiry metadata entries whose final file does not exist.
+
+- `POST /uploads` writes only to staging before private metadata is committed. `ExpiryStore::publish()` then registers expiry and creates the final path without overwriting an existing file. Failures clean inaccessible staging and roll back metadata; startup reconciles staging and metadata left by a process crash before serving requests.
 - Explicit-path `POST /files/<path>` and `PUT /files/<path>` bypass the random-upload size limit and expiry scheduling. Treat them as a separate, WAF-protected API contract; do not assume uploads created through them expire.
-- `DELETE /files/<path>` deletes only the file. It currently leaves any corresponding expiry or private-index entry behind; recreating that path can therefore inherit stale metadata.
+- `DELETE /files/<path>` deletes only the file. It leaves corresponding expiry or private-index entries behind until restart reconciliation; recreating that path before restart can therefore inherit stale metadata.
 - During an expiry sweep, a failed `remove_file` is logged but its entry is still removed from the index, so the sweeper will not retry it. Preserve or requeue the entry when changing this behavior.
 
 When modifying these flows, define the failure/compensation order first and add tests for both the successful path and every metadata-write or deletion failure.
@@ -308,9 +331,9 @@ docker run -p 8080:8080 \
 1. **`uploads::upload_file()`** handles:
    - Random filename generation (`UploadId::new(8)`)
    - Extension detection (filename > Content-Type > no extension)
-   - Streaming multipart file persistence with `max_upload_size` enforcement
+   - Raw multipart request, part-count, field-schema, body-deadline, and file-size enforcement
    - Private marking (`private_store.mark_private()`)
-   - Expiry scheduling (`expiry_store.schedule()`)
+   - Atomic no-clobber publication and expiry registration (`expiry_store.publish()`)
 2. **Form fields**: Extend `UploadParts` and handle the field in `save_upload_payload()`
 3. **Query params**: Extend `UploadQuery` and extract it with `web::Query<UploadQuery>`
 4. Preserve cleanup behavior when introducing a failure after the file has been written.

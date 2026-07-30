@@ -8,6 +8,7 @@ mod private_index;
 mod store;
 #[cfg(test)]
 mod test_utils;
+mod upload_protection;
 mod uploads;
 
 use std::sync::Arc;
@@ -29,23 +30,63 @@ async fn main() -> std::io::Result<()> {
 
     let mut config = load_config();
     apply_rocket_compat_env(&mut config);
+    config
+        .validate()
+        .map_err(|reason| std::io::Error::new(std::io::ErrorKind::InvalidInput, reason))?;
     log::info!("Using config: {:?}", config);
 
     // Ensure runtime data directories exist
     let uploads_dir = config.resolve_base(&config.uploads_path);
     let data_dir = config.resolve_base(&config.data_path);
     std::fs::create_dir_all(&uploads_dir).unwrap_or_else(|e| {
-        panic!("Failed to create uploads directory {}: {}", uploads_dir.display(), e)
+        panic!(
+            "Failed to create uploads directory {}: {}",
+            uploads_dir.display(),
+            e
+        )
     });
+    uploads::cleanup_staging_dir(&config).map_err(|error| {
+        std::io::Error::new(
+            error.kind(),
+            format!(
+                "failed to clean upload staging directory under {}: {}",
+                uploads_dir.display(),
+                error
+            ),
+        )
+    })?;
     std::fs::create_dir_all(&data_dir).unwrap_or_else(|e| {
-        panic!("Failed to create data directory {}: {}", data_dir.display(), e)
+        panic!(
+            "Failed to create data directory {}: {}",
+            data_dir.display(),
+            e
+        )
     });
 
     let expiry_store = Arc::new(expiry::ExpiryStore::new(&config));
+    let private_index_store = Arc::new(private_index::PrivateIndexStore::new(&config));
+    let removed_expiry_entries = expiry_store
+        .reconcile_missing_files()
+        .await
+        .map_err(std::io::Error::other)?;
+    let removed_private_entries = private_index_store
+        .reconcile_missing_files()
+        .await
+        .map_err(std::io::Error::other)?;
+    if removed_expiry_entries > 0 || removed_private_entries > 0 {
+        log::warn!(
+            "startup removed {} expiry and {} private metadata entries without published files",
+            removed_expiry_entries,
+            removed_private_entries
+        );
+    }
     expiry_store.clone().spawn_sweeper(Duration::from_secs(60));
 
-    let private_index_store = Arc::new(private_index::PrivateIndexStore::new(&config));
     let access_auth = Arc::new(auth::AccessAuth::from_env());
+    let upload_protection = Arc::new(
+        upload_protection::UploadProtection::from_env()
+            .map_err(|reason| std::io::Error::new(std::io::ErrorKind::InvalidInput, reason))?,
+    );
 
     let bind = (config.address.clone(), config.port);
     let web_path = config.web_path.clone();
@@ -59,10 +100,15 @@ async fn main() -> std::io::Result<()> {
                 uploads_path: config.uploads_path.clone(),
                 data_path: config.data_path.clone(),
                 max_upload_size: config.max_upload_size,
+                default_upload_ttl_secs: config.default_upload_ttl_secs,
+                max_upload_ttl_secs: config.max_upload_ttl_secs,
+                max_upload_text_field_size: config.max_upload_text_field_size,
+                max_authorized_emails: config.max_authorized_emails,
             }))
             .app_data(web::Data::new(expiry_store.clone()))
             .app_data(web::Data::new(private_index_store.clone()))
             .app_data(web::Data::new(access_auth.clone()))
+            .app_data(web::Data::new(upload_protection.clone()))
             .service(health)
             .service(uploads::upload_file)
             .service(files::get_file)
