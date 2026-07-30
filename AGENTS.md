@@ -1,4 +1,4 @@
-# AGENTS.md — Folio Coding Agent Guide
+# AGENTS.md — Agenfact Coding Agent Guide
 
 > **Purpose**: This document is optimized for AI coding agents (Claude Code, Codex, etc.) to quickly understand the codebase structure, conventions, and common modification patterns.
 
@@ -8,12 +8,12 @@
 
 | Aspect | Value |
 |--------|-------|
-| **Type** | Self-hosted file storage + sharing service |
+| **Type** | Self-hosted stateless digital artifact delivery & hosting platform for AI Agents |
 | **Backend** | Rust 2024 edition, Actix Web 4 |
 | **Frontend** | Svelte 5, Vite, TypeScript, Tailwind CSS 4 |
 | **Auth** | Cloudflare Access JWT (RS256/JWKS or HS256) |
-| **Storage** | Local filesystem + JSON indices |
-| **Config** | Figment (TOML + env vars with `FOLIO_` prefix) |
+| **Storage** | Local filesystem + JSON indices (with optional CouchDB backend) |
+| **Config** | Figment (TOML + env vars with `AGENFACT_` prefix) |
 | **CI/CD** | Gitea Actions (`.gitea/workflows/`) |
 
 ---
@@ -21,12 +21,12 @@
 ## 📁 Project Structure
 
 ```
-folio/
+agenfact/
 ├── src/                          # Rust backend
 │   ├── main.rs                   # Entry point, route mounting, managed state
 │   ├── config.rs                 # Figment config (TOML + env), path normalization
 │   ├── auth.rs                   # JWT validation (RS256/JWKS + HS256), VerifiedIdentity guard
-│   ├── error.rs                  # Unified FolioError → JSON HTTP error responses
+│   ├── error.rs                  # Unified AgenfactError → JSON HTTP error responses
 │   ├── files.rs                  # File CRUD (GET/POST/PUT/DELETE), SafePath validation
 │   ├── uploads.rs                # Random 8-char filename, multipart upload, TTL scheduling
 │   ├── expiry.rs                 # Background sweeper (60s interval), ExpiryStore
@@ -80,7 +80,7 @@ folio/
 ### Path Normalization (Defense in Depth)
 
 1. **`SafePath` validation** (`path.rs` + `files.rs`): Rejects `..` and non-normal URL path components before filesystem access
-2. **`config::Folio::normalize_and_join()`** (`config.rs`): Strips `..`, `.`, root components; only `Normal` components kept
+2. **`config::Agenfact::normalize_and_join()`** (`config.rs`): Strips `..`, `.`, root components; only `Normal` components kept
 
 **When modifying**: Always use `build_full_upload_path()` or `build_full_data_path()` — never join paths manually.
 
@@ -90,7 +90,7 @@ folio/
 - **Token Sources**: `Cf-Access-Jwt-Assertion` header (priority) OR `Authorization: Bearer ***
 - **Verify Modes**:
   - **RS256 + JWKS**: Production. Fetches from Cloudflare, caches 1hr in `Mutex<Option<(JwkSet, Instant)>>`
-  - **HS256**: Testing. Uses `FOLIO_CF_ACCESS_HS256_SECRET` env var
+  - **HS256**: Testing. Uses `AGENFACT_CF_ACCESS_HS256_SECRET` env var
 
 **When modifying auth**: Update both `verify_claims()` branches (RS256 + HS256).
 
@@ -128,45 +128,51 @@ email ∈ authorized_emails?
 
 | Key | Env Var | Default | Description |
 |-----|---------|---------|-------------|
-| `web_path` | `FOLIO_WEB_PATH` | `./web/dist` | Svelte build output path |
-| `uploads_path` | `FOLIO_UPLOADS_PATH` | `./uploads` | Uploaded files storage |
-| `data_path` | `FOLIO_DATA_PATH` | `./data` | JSON index files location |
-| `default_upload_ttl_secs` | `FOLIO_DEFAULT_UPLOAD_TTL_SECS` | `604800` | Positive default TTL when `expire` is omitted |
-| `max_upload_ttl_secs` | `FOLIO_MAX_UPLOAD_TTL_SECS` | `604800` | Positive maximum accepted TTL; must be at least the default and produce a client-representable expiration timestamp |
+| `web_path` | `AGENFACT_WEB_PATH` | `./web/dist` | Svelte build output path |
+| `uploads_path` | `AGENFACT_UPLOADS_PATH` | `./uploads` | Uploaded files storage |
+| `data_path` | `AGENFACT_DATA_PATH` | `./data` | JSON index files location |
+| `default_upload_ttl_secs` | `AGENFACT_DEFAULT_UPLOAD_TTL_SECS` | `604800` | Positive default TTL when `expire` is omitted |
+| `max_upload_ttl_secs` | `AGENFACT_MAX_UPLOAD_TTL_SECS` | `604800` | Positive maximum accepted TTL; must be at least the default and produce a client-representable expiration timestamp |
 
 ### Cloudflare Access Settings (`auth.rs:from_env()`)
 
 | Env Var | Default | Description |
 |---------|---------|-------------|
-| `FOLIO_CF_ACCESS_ISSUER` | `https://example.cloudflareaccess.com` | JWT issuer |
-| `FOLIO_CF_ACCESS_AUD` | _(empty)_ | JWT audience (required for prod) |
-| `FOLIO_CF_ACCESS_JWKS_URL` | `${ISSUER}/cdn-cgi/access/certs` | JWKS endpoint |
-| `FOLIO_CF_ACCESS_HS256_SECRET` | _(unset)_ | HS256 secret (dev/test only) |
+| `AGENFACT_CF_ACCESS_ISSUER` | `https://example.cloudflareaccess.com` | JWT issuer |
+| `AGENFACT_CF_ACCESS_AUD` | _(empty)_ | JWT audience (required for prod) |
+| `AGENFACT_CF_ACCESS_JWKS_URL` | `${ISSUER}/cdn-cgi/access/certs` | JWKS endpoint |
+| `AGENFACT_CF_ACCESS_HS256_SECRET` | _(unset)_ | HS256 secret (dev/test only) |
 
 ### Upload Protection Settings (`upload_protection.rs:from_env()`)
 
 | Env Var | Default | Description |
 |---------|---------|-------------|
-| `FOLIO_UPLOAD_RATE_SOFT_LIMIT` | `5` | Requests per window before Turnstile challenge; must not exceed the hard limit |
-| `FOLIO_UPLOAD_RATE_HARD_LIMIT` | `20` | Hard rate limit (`0..=100`; 429 when exceeded) |
-| `FOLIO_UPLOAD_RATE_WINDOW_SECS` | `60` | Time window for rate counting |
-| `FOLIO_TURNSTILE_PASS_TTL_SECS` | `600` | HttpOnly upload-pass cookie duration |
-| `FOLIO_MIN_FREE_DISK_BYTES` | `1073741824` | Minimum free disk space (1 GiB by default; 0 = disabled) |
-| `FOLIO_TRUST_CF_CONNECTING_IP` | `false` | Trust CF-Connecting-IP header (enable behind Cloudflare) |
-| `FOLIO_UPLOAD_TOKEN` | _(unset)_ | Bearer token for CLI uploads (bypasses Turnstile) |
-| `FOLIO_TURNSTILE_SITE_KEY` | _(unset)_ | Turnstile site key for frontend widget |
-| `FOLIO_TURNSTILE_SECRET` | _(unset)_ | Turnstile secret for server verification |
-| `FOLIO_TURNSTILE_HOSTNAME` | _(unset)_ | Expected hostname in Turnstile response |
-| `FOLIO_TURNSTILE_SITEVERIFY_URL` | `https://challenges.cloudflare.com/turnstile/v0/siteverify` | Turnstile API endpoint |
-| `FOLIO_MAX_CONCURRENT_UPLOADS` | `4` | System-wide concurrent upload limit |
+| `AGENFACT_UPLOAD_RATE_SOFT_LIMIT` | `5` | Requests per window before Turnstile challenge; must not exceed the hard limit |
+| `AGENFACT_UPLOAD_RATE_HARD_LIMIT` | `20` | Hard rate limit (`0..=100`; 429 when exceeded) |
+| `AGENFACT_UPLOAD_RATE_WINDOW_SECS` | `60` | Time window for rate counting |
+| `AGENFACT_TURNSTILE_PASS_TTL_SECS` | `600` | HttpOnly upload-pass cookie duration |
+| `AGENFACT_MIN_FREE_DISK_BYTES` | `1073741824` | Minimum free disk space (1 GiB by default; 0 = disabled) |
+| `AGENFACT_TRUST_CF_CONNECTING_IP` | `false` | Trust CF-Connecting-IP header (enable behind Cloudflare) |
+| `AGENFACT_UPLOAD_TOKEN` | _(unset)_ | Bearer token for CLI uploads (bypasses Turnstile) |
+| `AGENFACT_TURNSTILE_SITE_KEY` | _(unset)_ | Turnstile site key for frontend widget |
+| `AGENFACT_TURNSTILE_SECRET` | _(unset)_ | Turnstile secret for server verification |
+| `AGENFACT_TURNSTILE_HOSTNAME` | _(unset)_ | Expected hostname in Turnstile response |
+| `AGENFACT_TURNSTILE_SITEVERIFY_URL` | `https://challenges.cloudflare.com/turnstile/v0/siteverify` | Turnstile API endpoint |
+| `AGENFACT_MAX_CONCURRENT_UPLOADS` | `4` | System-wide concurrent upload limit |
 
 The Turnstile site key, secret, and expected hostname are an all-or-none configuration set. Partial configuration is rejected at startup.
 
 ### Adding New Config Fields
 
-1. Add field to `Folio` struct in `config.rs`
-2. Add default value in `impl Default for Folio`
-3. Reference via `web::Data<config::Folio>` in handlers or `config.build_full_*_path()` methods
+1. Add field to `Agenfact` struct in `config.rs`:
+   ```rust
+   pub struct Agenfact {
+       // ... existing fields
+       pub new_field: String,
+   }
+   ```
+2. Add default in `impl Default for Agenfact`
+3. Access in handlers via `web::Data<config::Agenfact>` or `config.build_full_*_path()` methods
 
 ---
 
@@ -218,7 +224,7 @@ tokio::fs::rename(&tmp_path, &index_path).await?;
 
 `JsonFileStore` protects each JSON index update with an in-process `Mutex<()>` and tmp-file-plus-rename writes. It does **not** make a filesystem mutation and its related JSON mutations transactional.
 
-Random uploads are first written under the non-served `.folio-staging` directory. `ExpiryStore::publish()` holds the expiry-store lock while registering expiry and atomically creating a no-clobber final link; startup removes stranded staging files and private/expiry metadata entries whose final file does not exist.
+Random uploads are first written under the non-served `.agenfact-staging` directory. `ExpiryStore::publish()` holds the expiry-store lock while registering expiry and atomically creating a no-clobber final link; startup removes stranded staging files and private/expiry metadata entries whose final file does not exist.
 
 - `POST /uploads` writes only to staging before private metadata is committed. `ExpiryStore::publish()` then registers expiry and creates the final path without overwriting an existing file. Failures clean inaccessible staging and roll back metadata; startup reconciles staging and metadata left by a process crash before serving requests.
 - Explicit-path `POST /files/<path>` and `PUT /files/<path>` bypass the random-upload size limit and expiry scheduling. Treat them as a separate, WAF-protected API contract; do not assume uploads created through them expire.
@@ -272,13 +278,13 @@ pnpm run check  # or svelte-check --tsconfig ./tsconfig.app.json
 
 ```bash
 # Build locally
-docker build -t folio:local .
+docker build -t agenfact:local .
 
 # Run
 docker run -p 8080:8080 \
-  -e FOLIO_CF_ACCESS_ISSUER=https://... \
-  -e FOLIO_CF_ACCESS_AUD=... \
-  folio:local
+  -e AGENFACT_CF_ACCESS_ISSUER=https://... \
+  -e AGENFACT_CF_ACCESS_AUD=... \
+  agenfact:local
 ```
 
 ---
@@ -300,15 +306,15 @@ docker run -p 8080:8080 \
 
 ### Adding a New Config Field
 
-1. Add to `Folio` struct in `config.rs`:
+1. Add to `Agenfact` struct in `config.rs`:
    ```rust
-   pub struct Folio {
+   pub struct Agenfact {
        // ... existing fields
        pub new_field: String,
    }
    ```
-2. Add default in `impl Default for Folio`
-3. Access in handlers via `web::Data<config::Folio>`
+2. Add default in `impl Default for Agenfact`
+3. Access in handlers via `web::Data<config::Agenfact>`
 4. Add env var documentation to `README.md`
 
 ### Modifying Auth Logic
@@ -350,7 +356,7 @@ docker run -p 8080:8080 \
 
 ### JWT Testing
 
-- For local testing, set `FOLIO_CF_ACCESS_HS256_SECRET` (uses HS256)
+- For local testing, set `AGENFACT_CF_ACCESS_HS256_SECRET` (uses HS256)
 - For production, **do not** set HS256 secret (forces RS256/JWKS)
 - `aud` claim can be string OR array — both supported (`deserialize_aud` in `auth.rs`)
 
@@ -400,4 +406,4 @@ RUST_LOG=info cargo run
 
 ---
 
-_Last updated: 2026-07-27. For questions or clarifications, refer to the source code comments and inline documentation._
+_Last updated: 2026-07-30. For questions or clarifications, refer to the source code comments and inline documentation._

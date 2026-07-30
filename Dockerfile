@@ -9,7 +9,7 @@ ARG PNPM_VERSION=11.6.0
 RUN npm install --global pnpm@${PNPM_VERSION}
 
 COPY web/package.json web/pnpm-lock.yaml web/pnpm-workspace.yaml ./
-RUN --mount=type=cache,id=folio-pnpm,target=/pnpm/store \
+RUN --mount=type=cache,id=agenfact-pnpm,target=/pnpm/store \
     pnpm install --frozen-lockfile --store-dir /pnpm/store
 
 COPY web/ ./
@@ -28,21 +28,21 @@ WORKDIR /build
 COPY Cargo.toml Cargo.lock ./
 # Create a dummy src/main.rs to build dependencies
 # This allows caching of dependencies even if source code changes
-RUN --mount=type=cache,id=folio-cargo-registry,target=/usr/local/cargo/registry \
-    --mount=type=cache,id=folio-cargo-git,target=/usr/local/cargo/git \
+RUN --mount=type=cache,id=agenfact-cargo-registry,target=/usr/local/cargo/registry \
+    --mount=type=cache,id=agenfact-cargo-git,target=/usr/local/cargo/git \
     set -eux; \
     mkdir src; \
     echo "fn main() {}" > src/main.rs; \
     cargo build --release --locked; \
-    rm -rf target/release/deps/folio* src
+    rm -rf target/release/deps/agenfact* src
 
 COPY . ./
 
-RUN --mount=type=cache,id=folio-cargo-registry,target=/usr/local/cargo/registry \
-    --mount=type=cache,id=folio-cargo-git,target=/usr/local/cargo/git \
+RUN --mount=type=cache,id=agenfact-cargo-registry,target=/usr/local/cargo/registry \
+    --mount=type=cache,id=agenfact-cargo-git,target=/usr/local/cargo/git \
     set -eux; \
     cargo build --release --locked; \
-    objcopy --compress-debug-sections target/release/folio ./folio
+    objcopy --compress-debug-sections target/release/agenfact ./agenfact
 
 FROM debian:trixie-slim
 
@@ -52,9 +52,9 @@ RUN set -eux; \
     DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends ca-certificates; \
     rm -rf /var/lib/apt/lists/*
 
-ARG pkg=folio
-ARG user=folio
-ARG group=folio
+ARG pkg=agenfact
+ARG user=agenfact
+ARG group=agenfact
 ARG uid=10000
 ARG gid=10001
 
@@ -62,22 +62,22 @@ ARG gid=10001
 RUN set -eux; \
     groupadd -g ${gid} ${group}; \
     useradd -l -u ${uid} -g ${gid} -m -s /usr/sbin/nologin ${user}; \
-    install -d -o ${uid} -g ${gid} /opt/folio /opt/folio/uploads /opt/folio/data /opt/folio/tmp
+    install -d -o ${uid} -g ${gid} /opt/agenfact /opt/agenfact/uploads /opt/agenfact/data /opt/agenfact/tmp
 
 USER ${user}
 
-WORKDIR /opt/folio
+WORKDIR /opt/agenfact
 
-COPY --from=builder --chown=${uid}:${gid} /build/folio ./folio
-COPY --from=web-builder --chown=${uid}:${gid} /build/dist /opt/folio/web
+COPY --from=builder --chown=${uid}:${gid} /build/agenfact ./agenfact
+COPY --from=web-builder --chown=${uid}:${gid} /build/dist /opt/agenfact/web
 
 ENV RUST_LOG=info
-ENV FOLIO_PORT="8080"
-ENV FOLIO_ADDRESS="0.0.0.0"
-ENV FOLIO_WEB_PATH="/opt/folio/web"
-ENV FOLIO_UPLOADS_PATH="/opt/folio/uploads"
-ENV FOLIO_DATA_PATH="/opt/folio/data"
+ENV AGENFACT_PORT="8080"
+ENV AGENFACT_ADDRESS="0.0.0.0"
+ENV AGENFACT_WEB_PATH="/opt/agenfact/web"
+ENV AGENFACT_UPLOADS_PATH="/opt/agenfact/uploads"
+ENV AGENFACT_DATA_PATH="/opt/agenfact/data"
 
 EXPOSE 8080/tcp
 
-ENTRYPOINT ["./folio"]
+ENTRYPOINT ["./agenfact"]

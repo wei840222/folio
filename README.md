@@ -1,6 +1,18 @@
-# folio
+# Agenfact
 
-A lightweight file storage server with a web interface, local expiry sweeper, and optional private-file protection via Cloudflare Access JWT.
+**Agenfact** (`Agent` + `Factum`) is a lightweight, stateless digital artifact hosting and delivery platform built specifically for **AI Agents** (and developers) to easily output, host, and share their generated artifacts (HTML pages, Markdown reports, code snippets, UI mockups, and files) with built-in access control and anti-abuse protection.
+
+---
+
+### 🧬 Name Origin & Concept
+
+* **Name**: **Agenfact** `/ˈeɪ.dʒən.fækt/` (代理人製品 / 賽博產物樞紐)
+* **Etymology**: 
+  * **`Agent`** — Autonomous AI Agents / Silicon Lifeforms (自主 AI 代理人 / 矽基生命).
+  * **`Factum`** — Latin for *"a thing done or made"* (被製造出的實體/製品，即 Artifact 的字根源頭).
+* **Concept**: In modern AI workflows, agents produce complex digital artifacts. Agenfact acts as a high-speed, stateless uplink core where agents deposit their creations for instant rendering, secure email-based JWT access authorization, automatic TTL lifecycle expiration, and CouchDB distributed persistence.
+
+---
 
 - [Features](#features)
 - [Architecture](#architecture)
@@ -21,7 +33,6 @@ A lightweight file storage server with a web interface, local expiry sweeper, an
 - **Random filename generation**: `/uploads` generates unique 8-character filenames.
 - **Custom file paths**: `/files/:path` supports explicit create/update/delete.
 - **Path normalization**: file paths are normalized to prevent directory traversal attacks.
-- **Edge-level write protection**: Cloudflare WAF blocks anonymous POST/PUT/DELETE on `/files/*` to prevent abuse (see [Security Model](https://gitea.home-infra.weii.cloud/home-infra/folio/wiki/Security-Model)).
 - **Local expiry index + sweeper**: expiration is tracked in `data/expiry-index.json` and cleaned by an in-process background sweeper.
 - **Private file redirect flow**: private-index (tracked in `data/private-files.json`) matches on `/files/:path` redirect to `/private-files/:path`.
 - **Cloudflare Access verification**: `/private-files/:path` verifies `Cf-Access-Jwt-Assertion` or standard `Authorization: Bearer *** JWT (RS256/JWKS with 1hr cache, or HS256 for local testing).
@@ -98,73 +109,73 @@ With custom bind settings:
 **Linux/macOS:**
 
 ```bash
-RUST_LOG=info FOLIO_ADDRESS=0.0.0.0 FOLIO_PORT=8080 cargo run
+RUST_LOG=info AGENFACT_ADDRESS=0.0.0.0 AGENFACT_PORT=8080 cargo run
 ```
 
 **Windows (PowerShell):**
 
 ```powershell
-$env:RUST_LOG="info"; $env:FOLIO_ADDRESS="0.0.0.0"; $env:FOLIO_PORT="8080"; cargo run
+$env:RUST_LOG="info"; $env:AGENFACT_ADDRESS="0.0.0.0"; $env:AGENFACT_PORT="8080"; cargo run
 ```
 
 ## Configuration
 
-Configured with `Folio.toml` and/or environment variables.
+Configured with `Agenfact.toml` and/or environment variables.
 
 ### Core
 
 | Key            | Environment Variable | Default      | Description                            |
 | -------------- | -------------------- | ------------ | -------------------------------------- |
-| `address`      | `FOLIO_ADDRESS`      | `127.0.0.1`  | HTTP bind address                      |
-| `port`         | `FOLIO_PORT`         | `8000`       | HTTP bind port                         |
-| `web_path`     | `FOLIO_WEB_PATH`     | `./web/dist` | Path to static web assets              |
-| `uploads_path` | `FOLIO_UPLOADS_PATH` | `./uploads`  | Upload storage path                    |
-| `data_path`    | `FOLIO_DATA_PATH`    | `./data`     | Persistent metadata (index/state) path |
-| `default_upload_ttl_secs` | `FOLIO_DEFAULT_UPLOAD_TTL_SECS` | `604800` | Positive default upload TTL when `expire` is omitted |
-| `max_upload_ttl_secs` | `FOLIO_MAX_UPLOAD_TTL_SECS` | `604800` | Positive maximum accepted upload TTL; must be at least the default and produce a client-representable expiration timestamp |
+| `address`      | `AGENFACT_ADDRESS`      | `127.0.0.1`  | HTTP bind address                      |
+| `port`         | `AGENFACT_PORT`         | `8000`       | HTTP bind port                         |
+| `web_path`     | `AGENFACT_WEB_PATH`     | `./web/dist` | Path to static web assets              |
+| `uploads_path` | `AGENFACT_UPLOADS_PATH` | `./uploads`  | Upload storage path                    |
+| `data_path`    | `AGENFACT_DATA_PATH`    | `./data`     | Persistent metadata (index/state) path |
+| `default_upload_ttl_secs` | `AGENFACT_DEFAULT_UPLOAD_TTL_SECS` | `604800` | Positive default upload TTL when `expire` is omitted |
+| `max_upload_ttl_secs` | `AGENFACT_MAX_UPLOAD_TTL_SECS` | `604800` | Positive maximum accepted upload TTL; must be at least the default and produce a client-representable expiration timestamp |
 
 ### Private access (Cloudflare Access)
 
 | Environment Variable           | Default                                | Description                                        |
 | ------------------------------ | -------------------------------------- | -------------------------------------------------- |
-| `FOLIO_CF_ACCESS_ISSUER`       | `https://example.cloudflareaccess.com` | Expected JWT issuer                                |
-| `FOLIO_CF_ACCESS_AUD`          | _(empty)_                              | Expected audience (required for production)        |
-| `FOLIO_CF_ACCESS_JWKS_URL`     | `${ISSUER}/cdn-cgi/access/certs`       | JWK Set URL for signature verification             |
-| `FOLIO_CF_ACCESS_HS256_SECRET` | _(unset)_                              | Optional HS256 verifier secret (for local testing) |
+| `AGENFACT_CF_ACCESS_ISSUER`       | `https://example.cloudflareaccess.com` | Expected JWT issuer                                |
+| `AGENFACT_CF_ACCESS_AUD`          | _(empty)_                              | Expected audience (required for production)        |
+| `AGENFACT_CF_ACCESS_JWKS_URL`     | `${ISSUER}/cdn-cgi/access/certs`       | JWK Set URL for signature verification             |
+| `AGENFACT_CF_ACCESS_HS256_SECRET` | _(unset)_                              | Optional HS256 verifier secret (for local testing) |
 
 ### Upload Protection (Rate Limiting & Challenge)
 
 | Environment Variable               | Default | Description                                                                                          |
 | ---------------------------------- | ------- | ---------------------------------------------------------------------------------------------------- |
-| `FOLIO_UPLOAD_RATE_SOFT_LIMIT`     | `5`     | Requests per window before Turnstile challenge is required; must not exceed the hard limit            |
-| `FOLIO_UPLOAD_RATE_HARD_LIMIT`     | `20`    | Hard rate limit (requests per window), accepted range `0..=100`; returns 429 when exceeded             |
-| `FOLIO_UPLOAD_RATE_WINDOW_SECS`    | `60`    | Time window in seconds for rate counting                                                             |
-| `FOLIO_TURNSTILE_PASS_TTL_SECS`  | `600`   | Duration (seconds) of the HttpOnly upload-pass cookie after successful Turnstile challenge           |
-| `FOLIO_MIN_FREE_DISK_BYTES`      | `1073741824` | Minimum free disk space (1 GiB by default) required to accept uploads. Set to 0 to disable the check |
-| `FOLIO_TRUST_CF_CONNECTING_IP`   | `false` | Trust `CF-Connecting-IP` header for client IP (only enable when behind Cloudflare proxy)             |
-| `FOLIO_UPLOAD_TOKEN`             | _(unset)_ | Bearer token for CLI/automated uploads. Bypasses Turnstile challenge but still subject to rate limits |
-| `FOLIO_TURNSTILE_SITE_KEY`       | _(unset)_ | Cloudflare Turnstile site key for frontend challenge widget                                          |
-| `FOLIO_TURNSTILE_SECRET`         | _(unset)_ | Cloudflare Turnstile secret key for server-side verification                                         |
-| `FOLIO_TURNSTILE_HOSTNAME`       | _(unset)_ | Expected hostname in Turnstile response (for validation)                                             |
-| `FOLIO_TURNSTILE_SITEVERIFY_URL` | `https://challenges.cloudflare.com/turnstile/v0/siteverify` | Turnstile siteverify API endpoint (override for testing) |
-| `FOLIO_MAX_CONCURRENT_UPLOADS`   | `4`     | Maximum number of concurrent uploads allowed system-wide                                               |
+| `AGENFACT_UPLOAD_RATE_SOFT_LIMIT`     | `5`     | Requests per window before Turnstile challenge is required; must not exceed the hard limit            |
+| `AGENFACT_UPLOAD_RATE_HARD_LIMIT`     | `20`    | Hard rate limit (requests per window), accepted range `0..=100`; returns 429 when exceeded             |
+| `AGENFACT_UPLOAD_RATE_WINDOW_SECS`    | `60`    | Time window in seconds for rate counting                                                             |
+| `AGENFACT_TURNSTILE_PASS_TTL_SECS`  | `600`   | Duration (seconds) of the HttpOnly upload-pass cookie after successful Turnstile challenge           |
+| `AGENFACT_MIN_FREE_DISK_BYTES`      | `1073741824` | Minimum free disk space (1 GiB by default) required to accept uploads. Set to 0 to disable the check |
+| `AGENFACT_TRUST_CF_CONNECTING_IP`   | `false` | Trust `CF-Connecting-IP` header for client IP (only enable when behind Cloudflare proxy)             |
+| `AGENFACT_UPLOAD_TOKEN`             | _(unset)_ | Bearer token for CLI/automated uploads. Bypasses Turnstile challenge but still subject to rate limits |
+| `AGENFACT_TURNSTILE_SITE_KEY`       | _(unset)_ | Cloudflare Turnstile site key for frontend challenge widget                                          |
+| `AGENFACT_TURNSTILE_SECRET`         | _(unset)_ | Cloudflare Turnstile secret key for server-side verification                                         |
+| `AGENFACT_TURNSTILE_HOSTNAME`       | _(unset)_ | Expected hostname in Turnstile response (for validation)                                             |
+| `AGENFACT_TURNSTILE_SITEVERIFY_URL` | `https://challenges.cloudflare.com/turnstile/v0/siteverify` | Turnstile siteverify API endpoint (override for testing) |
+| `AGENFACT_MAX_CONCURRENT_UPLOADS`   | `4`     | Maximum number of concurrent uploads allowed system-wide                                               |
 
-`FOLIO_TURNSTILE_SITE_KEY`, `FOLIO_TURNSTILE_SECRET`, and `FOLIO_TURNSTILE_HOSTNAME` must be configured together. Folio refuses to start when only part of this set is configured.
+`AGENFACT_TURNSTILE_SITE_KEY`, `AGENFACT_TURNSTILE_SECRET`, and `AGENFACT_TURNSTILE_HOSTNAME` must be configured together. Agenfact refuses to start when only part of this set is configured.
 
-Uploads are streamed into the internal `.folio-staging` directory and published only after metadata is committed. Failed requests clean their staging file immediately; service startup removes stranded staging files and metadata entries whose final file was never published.
+Uploads are streamed into the internal `.agenfact-staging` directory and published only after metadata is committed. Failed requests clean their staging file immediately; service startup removes stranded staging files and metadata entries whose final file was never published.
 
 Authorization is per-file based. Access lists are defined during upload via the `authorized_emails` field.
 
 ### Local Development / Testing (HS256)
 
-When `FOLIO_CF_ACCESS_HS256_SECRET` is set, Folio will use this secret to verify JWTs instead of fetching JWKS from Cloudflare. This is useful for manual testing without a real Cloudflare Access setup.
+When `AGENFACT_CF_ACCESS_HS256_SECRET` is set, Agenfact will use this secret to verify JWTs instead of fetching JWKS from Cloudflare. This is useful for manual testing without a real Cloudflare Access setup.
 
 **Example Configuration (.env):**
 
 ```bash
-FOLIO_CF_ACCESS_ISSUER=https://issuer.example.com
-FOLIO_CF_ACCESS_AUD=folio-app
-FOLIO_CF_ACCESS_HS256_SECRET=my-local-secret
+AGENFACT_CF_ACCESS_ISSUER=https://issuer.example.com
+AGENFACT_CF_ACCESS_AUD=agenfact-app
+AGENFACT_CF_ACCESS_HS256_SECRET=my-local-secret
 ```
 
 **Testing with curl:**
@@ -184,7 +195,7 @@ curl -X POST \
 # Token payload should include:
 # {
 #   "iss": "https://issuer.example.com",
-#   "aud": "folio-app",              // Can also be an array: ["folio-app"]
+#   "aud": "agenfact-app",              // Can also be an array: ["agenfact-app"]
 #   "sub": "user-123",
 #   "email": "tester@example.com",
 #   "exp": <future_timestamp>
@@ -199,9 +210,9 @@ curl -H "Cf-Access-Jwt-Assertion: *** \
 ### Example `.env` (production baseline)
 
 ```bash
-FOLIO_CF_ACCESS_ISSUER=https://<team>.cloudflareaccess.com
-FOLIO_CF_ACCESS_AUD=<your-access-audience>
-FOLIO_CF_ACCESS_JWKS_URL=https://<team>.cloudflareaccess.com/cdn-cgi/access/certs
+AGENFACT_CF_ACCESS_ISSUER=https://<team>.cloudflareaccess.com
+AGENFACT_CF_ACCESS_AUD=<your-access-audience>
+AGENFACT_CF_ACCESS_JWKS_URL=https://<team>.cloudflareaccess.com/cdn-cgi/access/certs
 ```
 
 ## API
@@ -370,7 +381,7 @@ pnpm run build
 ### Project Structure
 
 ```
-folio/
+agenfact/
 ├── src/                    # Rust backend source
 │   ├── main.rs            # Application entry point, route mounting
 │   ├── config.rs          # Figment-based configuration (TOML + env)
@@ -410,11 +421,11 @@ The project uses Gitea Actions for CI/CD.
 
 ### Registry
 
-Docker images are pushed to: `registry-gitea.home-infra.weii.cloud/home-infra/folio`
+Docker images are pushed to: `registry-gitea.home-infra.weii.cloud/home-infra/agenfact`
 
 ## Rollout checklist (dev → staging → production)
 
-1. Configure environment variables (`FOLIO_CF_ACCESS_*`) and restart service.
+1. Configure environment variables (`AGENFACT_CF_ACCESS_*`) and restart service.
 2. Verify public flow:
    - `GET /files/<public-file>` returns `200`
 3. Verify private redirect flow:

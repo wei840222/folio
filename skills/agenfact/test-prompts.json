@@ -2,7 +2,7 @@
   {
     "id": 1,
     "scenario": "Typical Scenario: Public File Upload",
-    "prompt": "Please share /tmp/report.pdf publicly for 24 hours and return the Folio link.",
+    "prompt": "Please share /tmp/report.pdf publicly for 24 hours and return the Agenfact link.",
     "expected": "Explicitly confirm Public visibility and 24h TTL before uploading; use scripts/upload.py; only use the actual URL returned in the HTTP Location header, without guessing the filename; report according to the specified template upon success."
   },
   {
@@ -14,7 +14,7 @@
   {
     "id": 3,
     "scenario": "Complex Scenario: Large Image & Error Handling",
-    "prompt": "Please share the 8MB /tmp/photo.png publicly for 24 hours. If the upload fails, report it clearly—do not fake success or guess the Folio URL.",
+    "prompt": "Please share the 8MB /tmp/photo.png publicly for 24 hours. If the upload fails, report it clearly—do not fake success or guess the Agenfact URL.",
     "expected": "Follow the large image SOP: first use scripts/compress.py to convert to JPG, then upload with scripts/upload.py; use the actual Location URL; if compression or upload fails, execute the explicit fallback and report truthfully."
   }
 ]

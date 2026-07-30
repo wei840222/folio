@@ -23,7 +23,7 @@ pub struct ExpiryStore {
 }
 
 impl ExpiryStore {
-    pub fn new(config: &config::Folio) -> Self {
+    pub fn new(config: &config::Agenfact) -> Self {
         let uploads_root = config.build_full_upload_path(&PathBuf::new());
         let index_path = config.build_full_data_path(&PathBuf::from("expiry-index.json"));
 
@@ -206,7 +206,7 @@ mod tests {
     use super::*;
 
     fn test_store(temp_dir: &tempfile::TempDir) -> ExpiryStore {
-        let config = config::Folio {
+        let config = config::Agenfact {
             address: "127.0.0.1".to_string(),
             port: 8000,
             web_path: "./web/dist".to_string(),
@@ -298,10 +298,10 @@ mod tests {
         let uploads_link = temp_dir.path().join("uploads-link");
         std::fs::create_dir(&real_uploads).unwrap();
         symlink(&real_uploads, &uploads_link).unwrap();
-        let config = config::Folio {
+        let config = config::Agenfact {
             uploads_path: uploads_link.to_string_lossy().to_string(),
             data_path: temp_dir.path().to_string_lossy().to_string(),
-            ..config::Folio::default()
+            ..config::Agenfact::default()
         };
         let store = ExpiryStore::new(&config);
         let staging_dir = uploads_link.join(config::UPLOAD_STAGING_DIR);

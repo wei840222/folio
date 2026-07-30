@@ -1,7 +1,7 @@
 ---
-name: folio
+name: agenfact
 version: 1.1.0
-description: Upload, manage, and share files via Folio at https://folio.weii.cloud. Supports automatic expiration (TTL) and private files with email-based access control. Use when the user asks to upload, share, store, or create links for files.
+description: Upload, manage, and share files via Agenfact at https://agenfact.weii.cloud. Supports automatic expiration (TTL) and private files with email-based access control. Use when the user asks to upload, share, store, or create links for files.
 metadata:
   openclaw:
     emoji: 📁
@@ -9,24 +9,24 @@ metadata:
       bins: [uv, python3]
 ---
 
-# folio
+# agenfact
 
-Folio provides a lightweight file storage service with automated expiration and identity-aware access control via Cloudflare Access.
+Agenfact provides a lightweight file storage & digital artifact hosting service with automated expiration and identity-aware access control via Cloudflare Access.
 
 ## Agent Instructions
 
 When handling file requests:
 
 1.  **Selection**: Confirm visibility (public/private) and desired TTL (e.g., `1h`, `24h`, `7d`). Default: `7d`.
-2.  **Execution**: Use `run_command` with `upload.py` for all upload operations. The script defaults to the fixed Folio endpoint `https://folio.weii.cloud/uploads`.
+2.  **Execution**: Use `run_command` with `upload.py` for all upload operations. The script defaults to the fixed Agenfact endpoint `https://agenfact.weii.cloud/uploads`.
 3.  **Reporting**: Return the uploaded file URL using the template provided below.
 
 ## 🔴 Safety Checkpoints
 
-Before any command that uploads a file to Folio, stop and show all three checkpoints:
+Before any command that uploads a file to Agenfact, stop and show all three checkpoints:
 
 1. **🔴 CHECKPOINT · VISIBILITY**: State the source path, visibility (`Public` or `Private`), TTL, and—when private—the complete authorized email list. If any value is missing or ambiguous, ask for it before continuing.
-2. **🔴 CHECKPOINT · STRUCTURE**: State the exact local script and command that will run, the selected file, the TTL, and the response fields that will be reported. Use the documented upload workflow; never invent a Folio endpoint, filename, or URL.
+2. **🔴 CHECKPOINT · STRUCTURE**: State the exact local script and command that will run, the selected file, the TTL, and the response fields that will be reported. Use the documented upload workflow; never invent an Agenfact endpoint, filename, or URL.
 3. **🔴 CHECKPOINT · CONTENT BUDGET**: Confirm that only file metadata and the resulting link are needed in the response. Do not open, quote, or paste the file's full content. If full-content access is ever required for a private or sensitive file, stop and obtain explicit confirmation first.
 
 **🛑 STOP**: Do not execute the upload command until the user explicitly confirms the checkpoint summary. If confirmation is not received, do not upload.
@@ -95,12 +95,12 @@ ALWAYS format the upload confirmation as follows:
 - **JWT Protection**: Private files are enforced by Cloudflare Access. Users will be prompted to authenticate when accessing the link.
 - **Content-Type**: Handled automatically by the `requests` library in the stealth upload script.
 - **TTL Validation**: `upload.py` rejects malformed expiry values before making a request. Supported units are `s`, `m`, `h`, and `d`.
-- **Endpoint Configuration**: The default upload endpoint is the fixed `https://folio.weii.cloud/uploads`. An explicit `--url` override is allowed only for local testing or a deliberately selected deployment; never read an endpoint from an environment variable or guess a destination.
+- **Endpoint Configuration**: The default upload endpoint is the fixed `https://agenfact.weii.cloud/uploads`. An explicit `--url` override is allowed only for local testing or a deliberately selected deployment; never read an endpoint from an environment variable or guess a destination.
 - **Failure Handling**: The script uses a bounded HTTP timeout, validates private email addresses, rejects unsafe or missing `Location` headers, and never retries an upload automatically. A timeout or missing `Location` may mean the server stored the file; verify server state before any manual retry.
 
 ## Managing Existing Files
 
-Folio exposes explicit-path management endpoints, but they are separate from random uploads:
+Agenfact exposes explicit-path management endpoints, but they are separate from random uploads:
 
 - `POST /files/<path>` creates a file and fails with `409` if it already exists.
 - `PUT /files/<path>` creates or overwrites a file.

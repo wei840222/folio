@@ -12,17 +12,17 @@ use tokio::io::AsyncWriteExt;
 
 use super::auth::{AccessAuth, VerifiedIdentity};
 use super::config;
-use super::error::FolioError;
+use super::error::AgenfactError;
 use super::path::SafePath;
 use super::private_index::PrivateIndexStore;
 
 /// Ensure parent directories exist.
-fn ensure_parent_dirs(path: &Path) -> Result<(), FolioError> {
+fn ensure_parent_dirs(path: &Path) -> Result<(), AgenfactError> {
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent).map_err(|e| {
             let message = format!("failed to create directories: {:?}", e);
             log::error!("{}, path: {}", message, path.display());
-            FolioError::Internal {
+            AgenfactError::Internal {
                 source: message,
                 context: Some(format!("create directories for: {}", path.display())),
             }
@@ -31,7 +31,7 @@ fn ensure_parent_dirs(path: &Path) -> Result<(), FolioError> {
     Ok(())
 }
 
-fn validate_path(path: web::Path<String>) -> Result<SafePath, FolioError> {
+fn validate_path(path: web::Path<String>) -> Result<SafePath, AgenfactError> {
     let path = SafePath::from_user_input(Path::new(path.as_str()))?;
     if path
         .as_path()
@@ -39,24 +39,24 @@ fn validate_path(path: web::Path<String>) -> Result<SafePath, FolioError> {
         .next()
         .is_some_and(|component| component.as_os_str() == config::UPLOAD_STAGING_DIR)
     {
-        return Err(FolioError::NotFound {
+        return Err(AgenfactError::NotFound {
             path: path.to_string(),
         });
     }
     Ok(path)
 }
 
-async fn save_file_field(mut payload: Multipart, full_path: &Path) -> Result<(), FolioError> {
+async fn save_file_field(mut payload: Multipart, full_path: &Path) -> Result<(), AgenfactError> {
     let mut found_file = false;
 
     while let Some(field) = payload.next().await {
-        let mut field = field.map_err(|e| FolioError::BadRequest {
+        let mut field = field.map_err(|e| AgenfactError::BadRequest {
             reason: format!("invalid multipart payload: {}", e),
         })?;
 
         if field.name() != Some("file") {
             while let Some(chunk) = field.next().await {
-                chunk.map_err(|e| FolioError::BadRequest {
+                chunk.map_err(|e| AgenfactError::BadRequest {
                     reason: format!("invalid multipart field: {}", e),
                 })?;
             }
@@ -68,20 +68,20 @@ async fn save_file_field(mut payload: Multipart, full_path: &Path) -> Result<(),
         let mut output = tokio::fs::File::create(full_path).await.map_err(|e| {
             let message = format!("failed to create file: {:?}", e);
             log::error!("multipart save error: {}", message);
-            FolioError::Internal {
+            AgenfactError::Internal {
                 source: message,
                 context: Some("create uploaded file".to_string()),
             }
         })?;
 
         while let Some(chunk) = field.next().await {
-            let data = chunk.map_err(|e| FolioError::BadRequest {
+            let data = chunk.map_err(|e| AgenfactError::BadRequest {
                 reason: format!("invalid multipart file field: {}", e),
             })?;
             output.write_all(&data).await.map_err(|e| {
                 let message = format!("failed to save file: {:?}", e);
                 log::error!("multipart save error: {}", message);
-                FolioError::Internal {
+                AgenfactError::Internal {
                     source: message,
                     context: Some("save uploaded file".to_string()),
                 }
@@ -91,7 +91,7 @@ async fn save_file_field(mut payload: Multipart, full_path: &Path) -> Result<(),
         output.flush().await.map_err(|e| {
             let message = format!("failed to flush file: {:?}", e);
             log::error!("multipart save error: {}", message);
-            FolioError::Internal {
+            AgenfactError::Internal {
                 source: message,
                 context: Some("flush uploaded file".to_string()),
             }
@@ -99,7 +99,7 @@ async fn save_file_field(mut payload: Multipart, full_path: &Path) -> Result<(),
     }
 
     if !found_file {
-        return Err(FolioError::BadRequest {
+        return Err(AgenfactError::BadRequest {
             reason: "multipart form is missing file field".to_string(),
         });
     }
@@ -110,15 +110,15 @@ async fn save_file_field(mut payload: Multipart, full_path: &Path) -> Result<(),
 #[get("/files/{path:.*}")]
 pub async fn get_file(
     req: HttpRequest,
-    config: web::Data<config::Folio>,
+    config: web::Data<config::Agenfact>,
     private_index: web::Data<Arc<PrivateIndexStore>>,
     path: web::Path<String>,
-) -> Result<HttpResponse, FolioError> {
+) -> Result<HttpResponse, AgenfactError> {
     let path = validate_path(path)?;
     let is_private = private_index
         .is_private(path.as_path())
         .await
-        .map_err(|e| FolioError::store_error(e, "check private index"))?;
+        .map_err(|e| AgenfactError::store_error(e, "check private index"))?;
 
     if is_private {
         return Ok(HttpResponse::Found()
@@ -132,22 +132,22 @@ pub async fn get_file(
 #[get("/private-files/{path:.*}")]
 pub async fn get_private_file(
     req: HttpRequest,
-    config: web::Data<config::Folio>,
+    config: web::Data<config::Agenfact>,
     private_index: web::Data<Arc<PrivateIndexStore>>,
     access_auth: web::Data<Arc<AccessAuth>>,
     path: web::Path<String>,
-) -> Result<HttpResponse, FolioError> {
+) -> Result<HttpResponse, AgenfactError> {
     let path = validate_path(path)?;
     let identity = VerifiedIdentity::from_request(&req, &access_auth)
         .await
-        .map_err(|err| FolioError::Unauthorized {
+        .map_err(|err| AgenfactError::Unauthorized {
             reason: err.message().to_string(),
         })?;
 
     let entry = private_index
         .get_entry(path.as_path())
         .await
-        .map_err(|e| FolioError::store_error(e, "check private index"))?;
+        .map_err(|e| AgenfactError::store_error(e, "check private index"))?;
 
     match entry {
         Some(e) => {
@@ -158,7 +158,7 @@ pub async fn get_private_file(
                     email,
                     path
                 );
-                return Err(FolioError::Forbidden {
+                return Err(AgenfactError::Forbidden {
                     reason: "email not authorized for this file".to_string(),
                 });
             }
@@ -180,26 +180,26 @@ pub async fn get_private_file(
 
 async fn open_upload_file(
     request: &HttpRequest,
-    config: &config::Folio,
+    config: &config::Agenfact,
     path: &SafePath,
-) -> Result<HttpResponse, FolioError> {
+) -> Result<HttpResponse, AgenfactError> {
     let full_path = config.build_full_upload_path(&PathBuf::from(path.as_path()));
 
     if !full_path.exists() {
-        return Err(FolioError::NotFound {
+        return Err(AgenfactError::NotFound {
             path: path.to_string(),
         });
     }
 
     if !full_path.is_file() {
-        return Err(FolioError::BadRequest {
+        return Err(AgenfactError::BadRequest {
             reason: format!("path is not a file: {}", path),
         });
     }
 
     let file = NamedFile::open_async(&full_path)
         .await
-        .map_err(|e| FolioError::Internal {
+        .map_err(|e| AgenfactError::Internal {
             source: format!("failed to open file: {}", e),
             context: Some(format!("open file: {}", path)),
         })?;
@@ -219,15 +219,15 @@ async fn open_upload_file(
 
 #[post("/files/{path:.*}")]
 pub async fn create_file(
-    config: web::Data<config::Folio>,
+    config: web::Data<config::Agenfact>,
     path: web::Path<String>,
     payload: Multipart,
-) -> Result<impl Responder, FolioError> {
+) -> Result<impl Responder, AgenfactError> {
     let path = validate_path(path)?;
     let full_path = config.build_full_upload_path(&PathBuf::from(path.as_path()));
 
     if full_path.exists() {
-        return Err(FolioError::Conflict {
+        return Err(AgenfactError::Conflict {
             path: path.to_string(),
         });
     }
@@ -241,10 +241,10 @@ pub async fn create_file(
 
 #[put("/files/{path:.*}")]
 pub async fn upsert_file(
-    config: web::Data<config::Folio>,
+    config: web::Data<config::Agenfact>,
     path: web::Path<String>,
     payload: Multipart,
-) -> Result<impl Responder, FolioError> {
+) -> Result<impl Responder, AgenfactError> {
     let path = validate_path(path)?;
     let full_path = config.build_full_upload_path(&PathBuf::from(path.as_path()));
     let file_exists = full_path.exists();
@@ -267,20 +267,20 @@ pub async fn upsert_file(
 
 #[delete("/files/{path:.*}")]
 pub async fn delete_file(
-    config: web::Data<config::Folio>,
+    config: web::Data<config::Agenfact>,
     path: web::Path<String>,
-) -> Result<impl Responder, FolioError> {
+) -> Result<impl Responder, AgenfactError> {
     let path = validate_path(path)?;
     let full_path = config.build_full_upload_path(&PathBuf::from(path.as_path()));
 
     if !full_path.exists() {
-        return Err(FolioError::NotFound {
+        return Err(AgenfactError::NotFound {
             path: path.to_string(),
         });
     }
 
     if !full_path.is_file() {
-        return Err(FolioError::BadRequest {
+        return Err(AgenfactError::BadRequest {
             reason: format!("path is not a file: {}", path),
         });
     }
@@ -288,7 +288,7 @@ pub async fn delete_file(
     std::fs::remove_file(&full_path).map_err(|e| {
         let message = format!("failed to delete file: {:?}", e);
         log::error!("DELETE /files error: {}", message);
-        FolioError::Internal {
+        AgenfactError::Internal {
             source: message,
             context: Some(format!("delete file: {}", path)),
         }
@@ -307,22 +307,22 @@ mod tests {
     use crate::test_utils::make_hs256_token;
 
     fn test_state() -> (
-        config::Folio,
+        config::Agenfact,
         Arc<PrivateIndexStore>,
         Arc<AccessAuth>,
         tempfile::TempDir,
     ) {
         let temp_dir = tempfile::tempdir().unwrap();
-        let config = config::Folio {
+        let config = config::Agenfact {
             uploads_path: temp_dir.path().to_string_lossy().to_string(),
             data_path: temp_dir.path().to_string_lossy().to_string(),
-            ..config::Folio::default()
+            ..config::Agenfact::default()
         };
 
         let private_index = Arc::new(PrivateIndexStore::new(&config));
         let access_auth = Arc::new(crate::auth::AccessAuth::from_parts(
             "https://issuer.example.com",
-            "folio-app",
+            "agenfact-app",
             Some("test-secret"),
         ));
 
@@ -634,7 +634,7 @@ mod tests {
     #[actix_web::test]
     async fn internal_upload_staging_files_are_not_served() {
         let (config, private_index, access_auth, temp_dir) = test_state();
-        let staging_dir = temp_dir.path().join(".folio-staging");
+        let staging_dir = temp_dir.path().join(config::UPLOAD_STAGING_DIR);
         std::fs::create_dir(&staging_dir).unwrap();
         std::fs::write(staging_dir.join("partial.txt"), "partial-content").unwrap();
         let app = test::init_service(
@@ -647,7 +647,7 @@ mod tests {
         .await;
 
         let req = test::TestRequest::get()
-            .uri("/files/.folio-staging/partial.txt")
+            .uri(&format!("/files/{}/partial.txt", config::UPLOAD_STAGING_DIR))
             .to_request();
         let response = test::call_service(&app, req).await;
 
@@ -728,7 +728,7 @@ mod tests {
             Some("allowed@example.com"),
             &["team-a"],
             "https://issuer.example.com",
-            "folio-app",
+            "agenfact-app",
             3600,
         );
         let req = test::TestRequest::get()
@@ -768,7 +768,7 @@ mod tests {
             Some("blocked@example.com"),
             &["team-a"],
             "https://issuer.example.com",
-            "folio-app",
+            "agenfact-app",
             3600,
         );
         let req = test::TestRequest::get()

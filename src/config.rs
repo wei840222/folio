@@ -2,11 +2,11 @@ use serde::{Deserialize, Serialize};
 use std::path::{Component, Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-pub const UPLOAD_STAGING_DIR: &str = ".folio-staging";
+pub const UPLOAD_STAGING_DIR: &str = ".agenfact-staging";
 pub const MAX_CLIENT_EXPIRY_UNIX_SECS: u64 = 253_402_300_799;
 
-#[derive(Debug, Deserialize, Serialize)]
-pub struct Folio {
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct Agenfact {
     pub address: String,
     pub port: u16,
     pub web_path: String,
@@ -19,7 +19,7 @@ pub struct Folio {
     pub max_authorized_emails: usize,
 }
 
-impl Folio {
+impl Agenfact {
     pub fn validate(&self) -> Result<(), String> {
         let now_unix_secs = SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -113,9 +113,9 @@ impl Folio {
     }
 }
 
-impl Default for Folio {
-    fn default() -> Folio {
-        Folio {
+impl Default for Agenfact {
+    fn default() -> Agenfact {
+        Agenfact {
             address: String::from("127.0.0.1"),
             port: 8000,
             web_path: String::from("./web/dist"),
@@ -136,7 +136,7 @@ mod tests {
 
     #[test]
     fn test_default_config() {
-        let config = Folio::default();
+        let config = Agenfact::default();
         assert_eq!(config.address, "127.0.0.1");
         assert_eq!(config.port, 8000);
         assert_eq!(config.web_path, "./web/dist");
@@ -150,10 +150,10 @@ mod tests {
 
     #[test]
     fn rejects_default_upload_ttl_above_maximum() {
-        let config = Folio {
+        let config = Agenfact {
             default_upload_ttl_secs: 121,
             max_upload_ttl_secs: 120,
-            ..Folio::default()
+            ..Agenfact::default()
         };
 
         assert_eq!(
@@ -164,10 +164,10 @@ mod tests {
 
     #[test]
     fn rejects_zero_default_upload_ttl() {
-        let config = Folio {
+        let config = Agenfact {
             default_upload_ttl_secs: 0,
             max_upload_ttl_secs: 1,
-            ..Folio::default()
+            ..Agenfact::default()
         };
 
         assert_eq!(
@@ -178,10 +178,10 @@ mod tests {
 
     #[test]
     fn rejects_zero_maximum_upload_ttl() {
-        let config = Folio {
+        let config = Agenfact {
             default_upload_ttl_secs: 0,
             max_upload_ttl_secs: 0,
-            ..Folio::default()
+            ..Agenfact::default()
         };
 
         assert_eq!(
@@ -192,10 +192,10 @@ mod tests {
 
     #[test]
     fn accepts_maximum_ttl_that_reaches_client_expiration_limit() {
-        let config = Folio {
+        let config = Agenfact {
             default_upload_ttl_secs: 100,
             max_upload_ttl_secs: 100,
-            ..Folio::default()
+            ..Agenfact::default()
         };
 
         assert_eq!(
@@ -206,10 +206,10 @@ mod tests {
 
     #[test]
     fn rejects_maximum_ttl_beyond_client_expiration_limit() {
-        let config = Folio {
+        let config = Agenfact {
             default_upload_ttl_secs: 100,
             max_upload_ttl_secs: 101,
-            ..Folio::default()
+            ..Agenfact::default()
         };
 
         assert_eq!(
@@ -225,7 +225,7 @@ mod tests {
 
         #[test]
         fn simple_path() {
-            let config = Folio::default();
+            let config = Agenfact::default();
             let path = config.build_full_upload_path(&PathBuf::from("test.txt"));
 
             assert!(path.to_string_lossy().ends_with("uploads/test.txt"));
@@ -234,7 +234,7 @@ mod tests {
 
         #[test]
         fn with_subdirectory() {
-            let config = Folio::default();
+            let config = Agenfact::default();
             let path = config.build_full_upload_path(&PathBuf::from("subfolder/test.txt"));
 
             assert!(
@@ -246,7 +246,7 @@ mod tests {
 
         #[test]
         fn normalizes_current_dir() {
-            let config = Folio::default();
+            let config = Agenfact::default();
             let path = config.build_full_upload_path(&PathBuf::from("./test.txt"));
 
             // Current dir component is ignored, only Normal components remain
@@ -256,7 +256,7 @@ mod tests {
 
         #[test]
         fn normalizes_parent_dir() {
-            let config = Folio::default();
+            let config = Agenfact::default();
             let path = config.build_full_upload_path(&PathBuf::from("folder/../test.txt"));
 
             // Parent dir components are ignored, only Normal components remain
@@ -266,7 +266,7 @@ mod tests {
 
         #[test]
         fn complex_normalization() {
-            let config = Folio::default();
+            let config = Agenfact::default();
             let path = config.build_full_upload_path(&PathBuf::from("a/b/../c/./d/../test.txt"));
 
             // Only Normal components are kept: a, b, c, d, test.txt
@@ -275,7 +275,7 @@ mod tests {
 
         #[test]
         fn with_custom_uploads_path() {
-            let config = Folio {
+            let config = Agenfact {
                 address: String::from("127.0.0.1"),
                 port: 8000,
                 web_path: String::from("./web"),
@@ -294,7 +294,7 @@ mod tests {
 
         #[test]
         fn relative_path_uses_current_dir() {
-            let config = Folio::default();
+            let config = Agenfact::default();
             let path = config.build_full_upload_path(&PathBuf::from("test.txt"));
 
             // Relative uploads_path should be joined with current_dir
@@ -305,7 +305,7 @@ mod tests {
 
         #[test]
         fn absolute_path_ignores_current_dir() {
-            let config = Folio {
+            let config = Agenfact {
                 address: String::from("127.0.0.1"),
                 port: 8000,
                 web_path: String::from("./web"),
@@ -331,7 +331,7 @@ mod tests {
 
         #[test]
         fn prevents_directory_escape() {
-            let config = Folio::default();
+            let config = Agenfact::default();
 
             // Try to escape with multiple parent directories
             let path = config.build_full_upload_path(&PathBuf::from("../../../etc/passwd"));
@@ -346,7 +346,7 @@ mod tests {
 
         #[test]
         fn prevents_escape_with_dots() {
-            let config = Folio::default();
+            let config = Agenfact::default();
 
             // Multiple attempts to escape
             let test_cases = vec![

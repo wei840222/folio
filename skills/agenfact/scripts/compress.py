@@ -16,7 +16,7 @@ def compress_image(input_path, output_path, quality=85):
         sys.exit(1)
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Compress image to JPG for Folio upload")
+    parser = argparse.ArgumentParser(description="Compress image to JPG for Agenfact upload")
     parser.add_argument("input", help="Input image path")
     parser.add_argument("output", help="Output JPG path")
     parser.add_argument("--quality", type=int, default=85, help="JPG quality (1-100)")

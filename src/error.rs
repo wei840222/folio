@@ -1,12 +1,12 @@
 use actix_web::{HttpResponse, ResponseError, http::StatusCode};
 use serde::Serialize;
 
-/// Unified error type for all Folio operations.
+/// Unified error type for all Agenfact operations.
 ///
 /// Replaces scattered `Result<T, String>` + manual `Custom<Status, Json<...>>` conversions
 /// with a single type that knows how to render itself as an HTTP response.
 #[derive(Debug)]
-pub enum FolioError {
+pub enum AgenfactError {
     Unauthorized {
         reason: String,
     },
@@ -42,7 +42,7 @@ pub enum FolioError {
     },
 }
 
-impl FolioError {
+impl AgenfactError {
     pub fn status(&self) -> StatusCode {
         match self {
             Self::Unauthorized { .. } => StatusCode::UNAUTHORIZED,
@@ -94,13 +94,13 @@ struct ErrorResponse {
     turnstile_site_key: Option<String>,
 }
 
-impl std::fmt::Display for FolioError {
+impl std::fmt::Display for AgenfactError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.message())
     }
 }
 
-impl ResponseError for FolioError {
+impl ResponseError for AgenfactError {
     fn status_code(&self) -> StatusCode {
         self.status()
     }

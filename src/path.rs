@@ -1,6 +1,6 @@
 use std::path::{Component, Path, PathBuf};
 
-use super::error::FolioError;
+use super::error::AgenfactError;
 
 /// A validated, sanitized file path relative to the uploads root.
 ///
@@ -15,11 +15,11 @@ impl SafePath {
     /// Create a SafePath from user-provided path segments.
     ///
     /// Rejects `..` components and non-normal components.
-    pub fn from_user_input(path: &Path) -> Result<Self, FolioError> {
+    pub fn from_user_input(path: &Path) -> Result<Self, AgenfactError> {
         // Check for explicit `..` in the string representation
         if path.to_string_lossy().contains("..") {
             log::warn!("path traversal attempt in user input: {}", path.display());
-            return Err(FolioError::BadRequest {
+            return Err(AgenfactError::BadRequest {
                 reason: format!("path contains '..': {}", path.to_string_lossy()),
             });
         }
@@ -34,7 +34,7 @@ impl SafePath {
                         other,
                         path.display()
                     );
-                    return Err(FolioError::BadRequest {
+                    return Err(AgenfactError::BadRequest {
                         reason: format!("invalid path component in: {}", path.to_string_lossy()),
                     });
                 }

@@ -13,7 +13,7 @@ use serde_json::json;
 use tokio::io::AsyncWriteExt;
 
 use super::config;
-use super::error::FolioError;
+use super::error::AgenfactError;
 use super::expiry::ExpiryStore;
 use super::private_index::PrivateIndexStore;
 use super::upload_protection::UploadProtection;
@@ -60,7 +60,7 @@ pub struct UploadQuery {
     expire: Option<String>,
 }
 
-pub fn cleanup_staging_dir(config: &config::Folio) -> std::io::Result<()> {
+pub fn cleanup_staging_dir(config: &config::Agenfact) -> std::io::Result<()> {
     let staging_dir = config
         .resolve_base(&config.uploads_path)
         .join(config::UPLOAD_STAGING_DIR);
@@ -80,20 +80,20 @@ pub fn cleanup_staging_dir(config: &config::Folio) -> std::io::Result<()> {
 #[post("/uploads")]
 pub async fn upload_file(
     request: HttpRequest,
-    config: web::Data<config::Folio>,
+    config: web::Data<config::Agenfact>,
     expiry_store: web::Data<Arc<ExpiryStore>>,
     private_store: web::Data<Arc<PrivateIndexStore>>,
     protection: web::Data<Arc<UploadProtection>>,
     payload: web::Payload,
     query: web::Query<UploadQuery>,
-) -> Result<impl Responder, FolioError> {
+) -> Result<impl Responder, AgenfactError> {
     let raw_body_limit = raw_upload_body_limit(&config);
     validate_content_length(&request, raw_body_limit)?;
     let admission = protection
         .admit(&request, &config.resolve_base(&config.uploads_path))
         .await?;
     let ttl = upload_ttl(&config, query.expire.as_deref())
-        .map_err(|reason| FolioError::BadRequest { reason })?;
+        .map_err(|reason| AgenfactError::BadRequest { reason })?;
 
     let payload = raw_limited_multipart(&request, payload, raw_body_limit);
     let mut parts = UploadParts::default();
@@ -110,20 +110,20 @@ pub async fn upload_file(
     let file_name = parts
         .file_name
         .take()
-        .ok_or_else(|| FolioError::BadRequest {
+        .ok_or_else(|| AgenfactError::BadRequest {
             reason: "multipart form is missing file field".to_string(),
         })?;
     let staged_path = parts
         .staged_path
         .take()
-        .ok_or_else(|| FolioError::Internal {
+        .ok_or_else(|| AgenfactError::Internal {
             source: "uploaded file is missing its staging path".to_string(),
             context: None,
         })?;
     let reservation_path = parts
         .reservation_path
         .take()
-        .ok_or_else(|| FolioError::Internal {
+        .ok_or_else(|| AgenfactError::Internal {
             source: "uploaded file is missing its name reservation".to_string(),
             context: None,
         })?;
@@ -139,7 +139,7 @@ pub async fn upload_file(
 
         if emails.len() > config.max_authorized_emails {
             cleanup_upload_artifacts(Some(&staged_path), Some(&reservation_path)).await;
-            return Err(FolioError::BadRequest {
+            return Err(AgenfactError::BadRequest {
                 reason: format!(
                     "authorized email count exceeds maximum of {}",
                     config.max_authorized_emails
@@ -157,7 +157,7 @@ pub async fn upload_file(
                     cleanup_upload_artifacts(Some(&staged_path), Some(&reservation_path)).await;
                     let message = format!("failed to mark file as private: {}", error);
                     log::error!("POST /uploads error: {}", message);
-                    return Err(FolioError::Internal {
+                    return Err(AgenfactError::Internal {
                         source: message,
                         context: None,
                     });
@@ -183,7 +183,7 @@ pub async fn upload_file(
             cleanup_upload_artifacts(Some(&staged_path), Some(&reservation_path)).await;
             let message = format!("failed to publish uploaded file {}: {}", file_name, error);
             log::error!("POST /uploads error: {}", message);
-            return Err(FolioError::Internal {
+            return Err(AgenfactError::Internal {
                 source: message,
                 context: None,
             });
@@ -195,7 +195,7 @@ pub async fn upload_file(
     response.append_header(("Location", format!("/files/{}", file_name)));
     if let Some(pass) = admission.pass_cookie {
         response.cookie(
-            Cookie::build("folio-upload-pass", pass)
+            Cookie::build("agenfact-upload-pass", pass)
                 .path("/uploads")
                 .secure(true)
                 .http_only(true)
@@ -213,14 +213,14 @@ pub async fn upload_file(
     })))
 }
 
-fn raw_upload_body_limit(config: &config::Folio) -> usize {
+fn raw_upload_body_limit(config: &config::Agenfact) -> usize {
     config
         .max_upload_size
         .saturating_add(config.max_upload_text_field_size)
         .saturating_add(MAX_MULTIPART_OVERHEAD_BYTES)
 }
 
-fn validate_content_length(request: &HttpRequest, max_bytes: usize) -> Result<(), FolioError> {
+fn validate_content_length(request: &HttpRequest, max_bytes: usize) -> Result<(), AgenfactError> {
     let Some(value) = request
         .headers()
         .get(actix_web::http::header::CONTENT_LENGTH)
@@ -231,11 +231,11 @@ fn validate_content_length(request: &HttpRequest, max_bytes: usize) -> Result<()
         .to_str()
         .ok()
         .and_then(|value| value.parse::<u64>().ok())
-        .ok_or_else(|| FolioError::BadRequest {
+        .ok_or_else(|| AgenfactError::BadRequest {
             reason: "invalid Content-Length header".to_string(),
         })?;
     if length > max_bytes as u64 {
-        return Err(FolioError::PayloadTooLarge {
+        return Err(AgenfactError::PayloadTooLarge {
             reason: format!("upload request exceeds maximum of {max_bytes} bytes"),
         });
     }
@@ -264,24 +264,24 @@ fn raw_limited_multipart(
 
 async fn save_upload_payload_with_deadline(
     payload: Multipart,
-    config: &config::Folio,
+    config: &config::Agenfact,
     parts: &mut UploadParts,
     deadline: Duration,
-) -> Result<(), FolioError> {
+) -> Result<(), AgenfactError> {
     tokio::time::timeout(deadline, save_upload_payload(payload, config, parts))
         .await
-        .map_err(|_| FolioError::RequestTimeout {
+        .map_err(|_| AgenfactError::RequestTimeout {
             reason: "upload body deadline exceeded".to_string(),
         })?
 }
 
-fn map_multipart_error(error: MultipartError, context: &str) -> FolioError {
+fn map_multipart_error(error: MultipartError, context: &str) -> AgenfactError {
     if matches!(&error, MultipartError::Payload(PayloadError::Overflow)) {
-        FolioError::PayloadTooLarge {
+        AgenfactError::PayloadTooLarge {
             reason: "multipart request exceeds maximum size".to_string(),
         }
     } else {
-        FolioError::BadRequest {
+        AgenfactError::BadRequest {
             reason: format!("invalid multipart {context}: {error}"),
         }
     }
@@ -289,9 +289,9 @@ fn map_multipart_error(error: MultipartError, context: &str) -> FolioError {
 
 async fn save_upload_payload(
     mut payload: Multipart,
-    config: &config::Folio,
+    config: &config::Agenfact,
     parts: &mut UploadParts,
-) -> Result<(), FolioError> {
+) -> Result<(), AgenfactError> {
     let max_request_size = config
         .max_upload_size
         .saturating_add(config.max_upload_text_field_size);
@@ -300,7 +300,7 @@ async fn save_upload_payload(
     while let Some(field) = payload.next().await {
         part_count += 1;
         if part_count > MAX_MULTIPART_PARTS {
-            return Err(FolioError::BadRequest {
+            return Err(AgenfactError::BadRequest {
                 reason: format!("multipart form exceeds maximum of {MAX_MULTIPART_PARTS} fields"),
             });
         }
@@ -309,7 +309,7 @@ async fn save_upload_payload(
         match field.name() {
             Some("file") => {
                 if parts.file_name.is_some() {
-                    return Err(FolioError::BadRequest {
+                    return Err(AgenfactError::BadRequest {
                         reason: "multipart form must contain exactly one file field".to_string(),
                     });
                 }
@@ -334,7 +334,7 @@ async fn save_upload_payload(
                 let staged_path = config.build_upload_staging_path(Path::new(&staged_name));
                 if let Some(parent) = staged_path.parent() {
                     tokio::fs::create_dir_all(parent).await.map_err(|error| {
-                        FolioError::Internal {
+                        AgenfactError::Internal {
                             source: error.to_string(),
                             context: Some("create upload staging directory".to_string()),
                         }
@@ -354,7 +354,7 @@ async fn save_upload_payload(
             }
             Some("authorized_emails") => {
                 if parts.authorized_emails.is_some() {
-                    return Err(FolioError::BadRequest {
+                    return Err(AgenfactError::BadRequest {
                         reason: "multipart form must not repeat authorized_emails".to_string(),
                     });
                 }
@@ -369,12 +369,12 @@ async fn save_upload_payload(
                 );
             }
             Some(name) => {
-                return Err(FolioError::BadRequest {
+                return Err(AgenfactError::BadRequest {
                     reason: format!("multipart form contains unknown field {name:?}"),
                 });
             }
             None => {
-                return Err(FolioError::BadRequest {
+                return Err(AgenfactError::BadRequest {
                     reason: "multipart field is missing a name".to_string(),
                 });
             }
@@ -445,9 +445,9 @@ fn content_type_extension(field: &Field) -> Option<String> {
 }
 
 fn generate_unique_upload_id(
-    config: &config::Folio,
+    config: &config::Agenfact,
     extension: Option<&str>,
-) -> Result<(UploadId, PathBuf), FolioError> {
+) -> Result<(UploadId, PathBuf), AgenfactError> {
     let mut attempts = 0u32;
     loop {
         let candidate = UploadId::new(8);
@@ -458,7 +458,7 @@ fn generate_unique_upload_id(
 
         attempts += 1;
         if attempts >= 10 {
-            return Err(FolioError::Internal {
+            return Err(AgenfactError::Internal {
                 source: "failed to generate unique upload id after 10 attempts".to_string(),
                 context: None,
             });
@@ -467,9 +467,9 @@ fn generate_unique_upload_id(
 }
 
 fn reserve_upload_name(
-    config: &config::Folio,
+    config: &config::Agenfact,
     file_name: &str,
-) -> Result<Option<PathBuf>, FolioError> {
+) -> Result<Option<PathBuf>, AgenfactError> {
     let final_path = config.build_full_upload_path(Path::new(file_name));
     if final_path.exists() {
         return Ok(None);
@@ -478,7 +478,7 @@ fn reserve_upload_name(
     let reservation_name = format!("{}.reserve", file_name);
     let reservation_path = config.build_upload_staging_path(Path::new(&reservation_name));
     if let Some(parent) = reservation_path.parent() {
-        std::fs::create_dir_all(parent).map_err(|error| FolioError::Internal {
+        std::fs::create_dir_all(parent).map_err(|error| AgenfactError::Internal {
             source: error.to_string(),
             context: Some("create upload staging directory".to_string()),
         })?;
@@ -491,7 +491,7 @@ fn reserve_upload_name(
         Ok(_) => {}
         Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => return Ok(None),
         Err(error) => {
-            return Err(FolioError::Internal {
+            return Err(AgenfactError::Internal {
                 source: error.to_string(),
                 context: Some("reserve upload name".to_string()),
             });
@@ -511,11 +511,11 @@ async fn save_field_to_path(
     max_size: usize,
     request_bytes: &mut usize,
     max_request_size: usize,
-) -> Result<(), FolioError> {
+) -> Result<(), AgenfactError> {
     if let Some(parent) = full_path.parent() {
         tokio::fs::create_dir_all(parent)
             .await
-            .map_err(|e| FolioError::Internal {
+            .map_err(|e| AgenfactError::Internal {
                 source: format!("failed to create upload directory: {}", e),
                 context: Some(format!("create directories for: {}", full_path.display())),
             })?;
@@ -524,7 +524,7 @@ async fn save_field_to_path(
     let mut output = tokio::fs::File::create(full_path).await.map_err(|e| {
         let message = format!("failed to save file: {}", e);
         log::error!("POST /uploads error: {}", message);
-        FolioError::Internal {
+        AgenfactError::Internal {
             source: message,
             context: None,
         }
@@ -543,12 +543,12 @@ async fn save_field_to_path(
             log::error!("POST /uploads error: {}", message);
             drop(output);
             let _ = tokio::fs::remove_file(full_path).await;
-            return Err(FolioError::PayloadTooLarge { reason: message });
+            return Err(AgenfactError::PayloadTooLarge { reason: message });
         }
         output.write_all(&data).await.map_err(|e| {
             let message = format!("failed to save file: {}", e);
             log::error!("POST /uploads error: {}", message);
-            FolioError::Internal {
+            AgenfactError::Internal {
                 source: message,
                 context: None,
             }
@@ -558,7 +558,7 @@ async fn save_field_to_path(
     output.flush().await.map_err(|e| {
         let message = format!("failed to flush file: {}", e);
         log::error!("POST /uploads error: {}", message);
-        FolioError::Internal {
+        AgenfactError::Internal {
             source: message,
             context: Some(format!("flush upload file: {}", full_path.display())),
         }
@@ -572,20 +572,20 @@ async fn read_text_field(
     max_size: usize,
     request_bytes: &mut usize,
     max_request_size: usize,
-) -> Result<String, FolioError> {
+) -> Result<String, AgenfactError> {
     let mut value = Vec::new();
     while let Some(chunk) = field.next().await {
         let data = chunk.map_err(|error| map_multipart_error(error, "text field"))?;
         consume_request_budget(request_bytes, data.len(), max_request_size)?;
         if value.len().saturating_add(data.len()) > max_size {
-            return Err(FolioError::PayloadTooLarge {
+            return Err(AgenfactError::PayloadTooLarge {
                 reason: format!("multipart text field exceeds {} byte limit", max_size),
             });
         }
         value.extend_from_slice(&data);
     }
 
-    String::from_utf8(value).map_err(|e| FolioError::BadRequest {
+    String::from_utf8(value).map_err(|e| AgenfactError::BadRequest {
         reason: format!("multipart text field is not utf-8: {}", e),
     })
 }
@@ -594,10 +594,10 @@ fn consume_request_budget(
     bytes_seen: &mut usize,
     chunk_size: usize,
     max_size: usize,
-) -> Result<(), FolioError> {
+) -> Result<(), AgenfactError> {
     *bytes_seen = bytes_seen.saturating_add(chunk_size);
     if *bytes_seen > max_size {
-        return Err(FolioError::PayloadTooLarge {
+        return Err(AgenfactError::PayloadTooLarge {
             reason: format!("upload fields exceed {} byte request limit", max_size),
         });
     }
@@ -648,7 +648,7 @@ fn parse_duration(s: &str) -> Result<Duration, String> {
     }
 }
 
-fn upload_ttl(config: &config::Folio, expire: Option<&str>) -> Result<Duration, String> {
+fn upload_ttl(config: &config::Agenfact, expire: Option<&str>) -> Result<Duration, String> {
     let ttl = match expire {
         Some(value) => parse_duration(value)?,
         None => Duration::from_secs(config.default_upload_ttl_secs),
@@ -729,10 +729,10 @@ mod tests {
 
     #[test]
     fn missing_expire_uses_default_ttl_instead_of_maximum() {
-        let config = config::Folio {
+        let config = config::Agenfact {
             default_upload_ttl_secs: 60,
             max_upload_ttl_secs: 120,
-            ..config::Folio::default()
+            ..config::Agenfact::default()
         };
 
         assert_eq!(upload_ttl(&config, None).unwrap(), Duration::from_secs(60));
@@ -741,9 +741,9 @@ mod tests {
     #[test]
     fn upload_name_reservation_prevents_concurrent_metadata_owners() {
         let temp_dir = tempfile::tempdir().unwrap();
-        let config = config::Folio {
+        let config = config::Agenfact {
             uploads_path: temp_dir.path().to_string_lossy().to_string(),
-            ..config::Folio::default()
+            ..config::Agenfact::default()
         };
         let file_name = "same-id.txt";
 
@@ -768,22 +768,22 @@ mod tests {
 
         let error = save_upload_payload_with_deadline(
             payload,
-            &config::Folio::default(),
+            &config::Agenfact::default(),
             &mut parts,
             Duration::from_millis(5),
         )
         .await
         .unwrap_err();
 
-        assert!(matches!(error, FolioError::RequestTimeout { .. }));
+        assert!(matches!(error, AgenfactError::RequestTimeout { .. }));
     }
 
     #[test]
     fn startup_cleanup_removes_crash_stranded_staging_files() {
         let temp_dir = tempfile::tempdir().unwrap();
-        let config = config::Folio {
+        let config = config::Agenfact {
             uploads_path: temp_dir.path().to_string_lossy().to_string(),
-            ..config::Folio::default()
+            ..config::Agenfact::default()
         };
         let staging_dir = temp_dir.path().join(config::UPLOAD_STAGING_DIR);
         std::fs::create_dir_all(&staging_dir).unwrap();
@@ -795,17 +795,17 @@ mod tests {
     }
 
     fn test_state() -> (
-        config::Folio,
+        config::Agenfact,
         Arc<ExpiryStore>,
         Arc<PrivateIndexStore>,
         Arc<UploadProtection>,
         tempfile::TempDir,
     ) {
         let temp_dir = tempfile::tempdir().unwrap();
-        let config = config::Folio {
+        let config = config::Agenfact {
             uploads_path: temp_dir.path().to_string_lossy().to_string(),
             data_path: temp_dir.path().to_string_lossy().to_string(),
-            ..config::Folio::default()
+            ..config::Agenfact::default()
         };
 
         let expiry_store = Arc::new(ExpiryStore::new(&config));
@@ -873,7 +873,7 @@ mod tests {
         loop {
             match protection.admit(&admission_request, temp_dir.path()).await {
                 Ok(admission) => held_admissions.push(admission),
-                Err(FolioError::TooManyRequests {
+                Err(AgenfactError::TooManyRequests {
                     code: "upload_busy",
                     ..
                 }) => break,

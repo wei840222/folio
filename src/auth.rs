@@ -73,20 +73,20 @@ impl AccessAuthError {
 
 impl AccessAuth {
     pub fn from_env() -> Self {
-        let issuer = std::env::var("FOLIO_CF_ACCESS_ISSUER")
+        let issuer = std::env::var("AGENFACT_CF_ACCESS_ISSUER")
             .unwrap_or_else(|_| "https://example.cloudflareaccess.com".to_string());
-        let audience = std::env::var("FOLIO_CF_ACCESS_AUD").unwrap_or_else(|_| "".to_string());
+        let audience = std::env::var("AGENFACT_CF_ACCESS_AUD").unwrap_or_else(|_| "".to_string());
 
         if audience.is_empty() {
             log::warn!(
-                "FOLIO_CF_ACCESS_AUD is not set — all private file access will fail with 'audience_not_configured'"
+                "AGENFACT_CF_ACCESS_AUD is not set — all private file access will fail with 'audience_not_configured'"
             );
         }
 
-        let verify_mode = if let Ok(secret) = std::env::var("FOLIO_CF_ACCESS_HS256_SECRET") {
+        let verify_mode = if let Ok(secret) = std::env::var("AGENFACT_CF_ACCESS_HS256_SECRET") {
             VerifyMode::Hs256 { secret }
         } else {
-            let jwks_url = std::env::var("FOLIO_CF_ACCESS_JWKS_URL").unwrap_or_else(|_| {
+            let jwks_url = std::env::var("AGENFACT_CF_ACCESS_JWKS_URL").unwrap_or_else(|_| {
                 format!("{}/cdn-cgi/access/certs", issuer.trim_end_matches('/'))
             });
             VerifyMode::Rs256Jwks { jwks_url }
@@ -364,7 +364,7 @@ mod tests {
     #[test]
     fn verify_hs256_success() {
         let secret = "test-secret";
-        let auth = AccessAuth::from_parts("https://issuer.example.com", "folio-app", Some(secret));
+        let auth = AccessAuth::from_parts("https://issuer.example.com", "agenfact-app", Some(secret));
 
         let token = make_hs256_token(
             secret,
@@ -372,7 +372,7 @@ mod tests {
             Some("allowed@example.com"),
             &["team-a"],
             "https://issuer.example.com",
-            "folio-app",
+            "agenfact-app",
             3600,
         );
 
@@ -384,7 +384,7 @@ mod tests {
     #[test]
     fn verify_hs256_invalid_signature_returns_401() {
         let auth =
-            AccessAuth::from_parts("https://issuer.example.com", "folio-app", Some("secret-a"));
+            AccessAuth::from_parts("https://issuer.example.com", "agenfact-app", Some("secret-a"));
 
         let token = make_hs256_token(
             "secret-b",
@@ -392,7 +392,7 @@ mod tests {
             Some("u@example.com"),
             &[],
             "https://issuer.example.com",
-            "folio-app",
+            "agenfact-app",
             3600,
         );
 
@@ -405,7 +405,7 @@ mod tests {
     #[test]
     fn verify_hs256_wrong_issuer_returns_401() {
         let secret = "test-secret";
-        let auth = AccessAuth::from_parts("https://issuer.example.com", "folio-app", Some(secret));
+        let auth = AccessAuth::from_parts("https://issuer.example.com", "agenfact-app", Some(secret));
 
         let token = make_hs256_token(
             secret,
@@ -413,7 +413,7 @@ mod tests {
             Some("u@example.com"),
             &[],
             "https://wrong-issuer.example.com",
-            "folio-app",
+            "agenfact-app",
             3600,
         );
 
@@ -426,7 +426,7 @@ mod tests {
     #[test]
     fn verify_hs256_wrong_audience_returns_401() {
         let secret = "test-secret";
-        let auth = AccessAuth::from_parts("https://issuer.example.com", "folio-app", Some(secret));
+        let auth = AccessAuth::from_parts("https://issuer.example.com", "agenfact-app", Some(secret));
 
         let token = make_hs256_token(
             secret,
@@ -447,7 +447,7 @@ mod tests {
     #[test]
     fn verify_hs256_expired_returns_401() {
         let secret = "test-secret";
-        let auth = AccessAuth::from_parts("https://issuer.example.com", "folio-app", Some(secret));
+        let auth = AccessAuth::from_parts("https://issuer.example.com", "agenfact-app", Some(secret));
 
         let token = make_hs256_token(
             secret,
@@ -455,7 +455,7 @@ mod tests {
             Some("u@example.com"),
             &[],
             "https://issuer.example.com",
-            "folio-app",
+            "agenfact-app",
             -3600,
         );
 
@@ -468,7 +468,7 @@ mod tests {
     #[test]
     fn verify_hs256_aud_array_success() {
         let secret = "test-secret";
-        let auth = AccessAuth::from_parts("https://issuer.example.com", "folio-app", Some(secret));
+        let auth = AccessAuth::from_parts("https://issuer.example.com", "agenfact-app", Some(secret));
 
         // Cloudflare Access sends aud as array
         let token = make_hs256_token(
@@ -477,7 +477,7 @@ mod tests {
             Some("allowed@example.com"),
             &["team-a"],
             "https://issuer.example.com",
-            ["folio-app"],
+            ["agenfact-app"],
             3600,
         );
 

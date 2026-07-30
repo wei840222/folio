@@ -9,7 +9,7 @@ from unittest import mock
 
 
 SCRIPT = pathlib.Path(__file__).parents[1] / "scripts" / "upload.py"
-SPEC = importlib.util.spec_from_file_location("folio_upload", SCRIPT)
+SPEC = importlib.util.spec_from_file_location("agenfact_upload", SCRIPT)
 upload = importlib.util.module_from_spec(SPEC)
 sys.modules[SPEC.name] = upload
 SPEC.loader.exec_module(upload)
@@ -44,7 +44,7 @@ class UploadScriptTests(unittest.TestCase):
         self.args_patch = mock.patch.object(sys, "argv", self.argv)
         self.args_patch.start()
         self.addCleanup(self.args_patch.stop)
-        self.token_patch = mock.patch.dict(os.environ, {"FOLIO_UPLOAD_TOKEN": ""})
+        self.token_patch = mock.patch.dict(os.environ, {"AGENFACT_UPLOAD_TOKEN": ""})
         self.token_patch.start()
         self.addCleanup(self.token_patch.stop)
 
@@ -62,7 +62,7 @@ class UploadScriptTests(unittest.TestCase):
             "https://cdn.test/file.pdf",
         )
 
-    def test_default_upload_url_is_folio_service(self):
+    def test_default_upload_url_is_agenfact_service(self):
         self.argv[:] = ["upload.py", "--file", "/tmp/report.pdf"]
         with mock.patch.object(upload.ua_generator, "generate") as generate:
             generate.return_value.text = "test-agent"
@@ -70,7 +70,7 @@ class UploadScriptTests(unittest.TestCase):
                 with mock.patch("builtins.open", mock.mock_open(read_data=b"pdf")):
                     with mock.patch("sys.stdout", new_callable=io.StringIO):
                         upload.main()
-        self.assertEqual(post.call_args.args[0], "https://folio.weii.cloud/uploads")
+        self.assertEqual(post.call_args.args[0], "https://agenfact.weii.cloud/uploads")
 
     def test_upload_sends_expiry_and_private_emails(self):
         response = FakeResponse()
@@ -117,7 +117,7 @@ class UploadScriptTests(unittest.TestCase):
 
     def test_upload_token_is_sent_as_bearer_without_being_printed(self):
         response = FakeResponse()
-        with mock.patch.dict(os.environ, {"FOLIO_UPLOAD_TOKEN": "cli-secret"}):
+        with mock.patch.dict(os.environ, {"AGENFACT_UPLOAD_TOKEN": "cli-secret"}):
             with mock.patch.object(upload.ua_generator, "generate") as generate:
                 generate.return_value.text = "test-agent"
                 with mock.patch.object(upload.requests, "post", return_value=response) as post:

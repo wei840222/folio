@@ -1,6 +1,6 @@
 # Asset Workflow: Compression & Upload
 
-This SOP describes how to handle large assets (images) when uploading to Folio to ensure reliability and performance.
+This SOP describes how to handle large assets (images) when uploading to Agenfact to ensure reliability and performance.
 
 ## The Image Size Problem
 
@@ -21,7 +21,7 @@ If compression fails, stop and report the error. Do not upload the original PNG 
 
 ### 2. Upload and Retrieval
 
-- **Security Warning**: Folio files are **PUBLIC** by default. Do not upload sensitive or private data unless using the `Private` (authorized_emails) feature.
+- **Security Warning**: Agenfact files are **PUBLIC** by default. Do not upload sensitive or private data unless using the `Private` (authorized_emails) feature.
 - **Upload Command**: Use `scripts/upload.py`; do not substitute `curl` or construct an endpoint manually.
 - **Location Header**: Do **NOT** guess the filename. Extract the temporary/random filename from the `location` header in the HTTP response.
 

@@ -93,18 +93,7 @@ async fn main() -> std::io::Result<()> {
 
     HttpServer::new(move || {
         App::new()
-            .app_data(web::Data::new(config::Folio {
-                address: config.address.clone(),
-                port: config.port,
-                web_path: config.web_path.clone(),
-                uploads_path: config.uploads_path.clone(),
-                data_path: config.data_path.clone(),
-                max_upload_size: config.max_upload_size,
-                default_upload_ttl_secs: config.default_upload_ttl_secs,
-                max_upload_ttl_secs: config.max_upload_ttl_secs,
-                max_upload_text_field_size: config.max_upload_text_field_size,
-                max_authorized_emails: config.max_authorized_emails,
-            }))
+            .app_data(web::Data::new(config.clone()))
             .app_data(web::Data::new(expiry_store.clone()))
             .app_data(web::Data::new(private_index_store.clone()))
             .app_data(web::Data::new(access_auth.clone()))
@@ -127,22 +116,22 @@ async fn main() -> std::io::Result<()> {
     .await
 }
 
-fn load_config() -> config::Folio {
-    Figment::from(Serialized::defaults(config::Folio::default()))
-        .merge(Toml::file("Folio.toml"))
-        .merge(Env::prefixed("FOLIO_").global())
+fn load_config() -> config::Agenfact {
+    Figment::from(Serialized::defaults(config::Agenfact::default()))
+        .merge(Toml::file("Agenfact.toml"))
+        .merge(Env::prefixed("AGENFACT_").global())
         .extract()
         .unwrap()
 }
 
-fn apply_rocket_compat_env(config: &mut config::Folio) {
-    if std::env::var_os("FOLIO_ADDRESS").is_none()
+fn apply_rocket_compat_env(config: &mut config::Agenfact) {
+    if std::env::var_os("AGENFACT_ADDRESS").is_none()
         && let Ok(address) = std::env::var("ROCKET_ADDRESS")
     {
         config.address = address;
     }
 
-    if std::env::var_os("FOLIO_PORT").is_none()
+    if std::env::var_os("AGENFACT_PORT").is_none()
         && let Ok(port) = std::env::var("ROCKET_PORT")
         && let Ok(port) = port.parse()
     {

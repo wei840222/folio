@@ -17,7 +17,7 @@ import ua_generator
 
 MAX_DURATION_VALUE = 10_000_000
 DEFAULT_TIMEOUT_SECONDS = 120
-DEFAULT_UPLOAD_URL = "https://folio.weii.cloud/uploads"
+DEFAULT_UPLOAD_URL = "https://agenfact.weii.cloud/uploads"
 DURATION_PATTERN = re.compile(r"^(\d+)([smhd])$")
 EMAIL_PATTERN = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 
@@ -95,7 +95,7 @@ def resolve_preview_location(upload_url, response, location):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Folio Stealth Upload Script")
+    parser = argparse.ArgumentParser(description="Agenfact Stealth Upload Script")
     parser.add_argument("--file", required=True, help="Path to the file to upload")
     parser.add_argument(
         "--expire",
@@ -111,7 +111,7 @@ def main():
         "--url",
         type=upload_url_arg,
         default=DEFAULT_UPLOAD_URL,
-        help=f"Folio upload URL (default: {DEFAULT_UPLOAD_URL})",
+        help=f"Agenfact upload URL (default: {DEFAULT_UPLOAD_URL})",
     )
     parser.add_argument(
         "--timeout",
@@ -127,7 +127,7 @@ def main():
     headers = {
         'User-Agent': ua.text
     }
-    upload_token = os.environ.get('FOLIO_UPLOAD_TOKEN')
+    upload_token = os.environ.get('AGENFACT_UPLOAD_TOKEN')
     if upload_token:
         headers['Authorization'] = f'Bearer {upload_token}'
 

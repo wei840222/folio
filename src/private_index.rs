@@ -29,7 +29,7 @@ pub struct PrivateIndexStore {
 }
 
 impl PrivateIndexStore {
-    pub fn new(config: &config::Folio) -> Self {
+    pub fn new(config: &config::Agenfact) -> Self {
         let index_path = config.build_full_data_path(&PathBuf::from("private-files.json"));
         Self {
             uploads_root: config.build_full_upload_path(&PathBuf::new()),
@@ -141,12 +141,12 @@ impl PrivateIndexStore {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::config::Folio;
+    use crate::config::Agenfact;
     use std::fs;
     use tempfile::tempdir;
 
     fn setup_store(temp_path: &Path) -> PrivateIndexStore {
-        let config = Folio {
+        let config = Agenfact {
             address: "127.0.0.1".to_string(),
             port: 8000,
             web_path: "".to_string(),

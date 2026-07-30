@@ -10,9 +10,9 @@ use serde::Deserialize;
 use sha2::{Digest, Sha256};
 use tokio::sync::{Mutex, OwnedSemaphorePermit, Semaphore};
 
-use super::error::FolioError;
+use super::error::AgenfactError;
 
-const PASS_COOKIE_NAME: &str = "folio-upload-pass";
+const PASS_COOKIE_NAME: &str = "agenfact-upload-pass";
 const TURNSTILE_HEADER: &str = "x-turnstile-token";
 const MAX_TRACKED_CLIENTS: usize = 10_000;
 const MAX_STORED_PASSES: usize = 10_000;
@@ -62,44 +62,44 @@ struct UploadProtectionSettings {
 impl UploadProtection {
     pub fn from_env() -> Result<Self, String> {
         let (soft_limit, hard_limit) = validate_rate_limits(
-            env_usize("FOLIO_UPLOAD_RATE_SOFT_LIMIT", 5)?,
-            env_usize("FOLIO_UPLOAD_RATE_HARD_LIMIT", 20)?,
+            env_usize("AGENFACT_UPLOAD_RATE_SOFT_LIMIT", 5)?,
+            env_usize("AGENFACT_UPLOAD_RATE_HARD_LIMIT", 20)?,
         )?;
         let (turnstile_site_key, turnstile_secret, turnstile_hostname) = validate_turnstile_config(
-            nonempty_env("FOLIO_TURNSTILE_SITE_KEY")?,
-            nonempty_env("FOLIO_TURNSTILE_SECRET")?,
-            nonempty_env("FOLIO_TURNSTILE_HOSTNAME")?,
+            nonempty_env("AGENFACT_TURNSTILE_SITE_KEY")?,
+            nonempty_env("AGENFACT_TURNSTILE_SECRET")?,
+            nonempty_env("AGENFACT_TURNSTILE_HOSTNAME")?,
         )?;
         let window = validated_duration(
-            "FOLIO_UPLOAD_RATE_WINDOW_SECS",
-            env_u64("FOLIO_UPLOAD_RATE_WINDOW_SECS", 60)?,
+            "AGENFACT_UPLOAD_RATE_WINDOW_SECS",
+            env_u64("AGENFACT_UPLOAD_RATE_WINDOW_SECS", 60)?,
         )?;
         let pass_ttl = validated_duration(
-            "FOLIO_TURNSTILE_PASS_TTL_SECS",
-            env_u64("FOLIO_TURNSTILE_PASS_TTL_SECS", 600)?,
+            "AGENFACT_TURNSTILE_PASS_TTL_SECS",
+            env_u64("AGENFACT_TURNSTILE_PASS_TTL_SECS", 600)?,
         )?;
         let siteverify_url = env_string(
-            "FOLIO_TURNSTILE_SITEVERIFY_URL",
+            "AGENFACT_TURNSTILE_SITEVERIFY_URL",
             "https://challenges.cloudflare.com/turnstile/v0/siteverify",
         )?;
         reqwest::Url::parse(&siteverify_url).map_err(|error| {
-            format!("FOLIO_TURNSTILE_SITEVERIFY_URL is not a valid URL: {error}")
+            format!("AGENFACT_TURNSTILE_SITEVERIFY_URL is not a valid URL: {error}")
         })?;
         let settings = UploadProtectionSettings {
             soft_limit,
             hard_limit,
             window,
             pass_ttl,
-            min_free_disk_bytes: env_u64("FOLIO_MIN_FREE_DISK_BYTES", 1024 * 1024 * 1024)?,
-            trust_cf_connecting_ip: env_bool("FOLIO_TRUST_CF_CONNECTING_IP", false)?,
-            upload_token_hash: nonempty_env("FOLIO_UPLOAD_TOKEN")?.map(|value| hash_token(&value)),
+            min_free_disk_bytes: env_u64("AGENFACT_MIN_FREE_DISK_BYTES", 1024 * 1024 * 1024)?,
+            trust_cf_connecting_ip: env_bool("AGENFACT_TRUST_CF_CONNECTING_IP", false)?,
+            upload_token_hash: nonempty_env("AGENFACT_UPLOAD_TOKEN")?.map(|value| hash_token(&value)),
             turnstile_site_key,
             turnstile_secret,
             turnstile_hostname,
             siteverify_url,
         };
         let max_concurrent =
-            validate_max_concurrent(env_usize("FOLIO_MAX_CONCURRENT_UPLOADS", 4)?)?;
+            validate_max_concurrent(env_usize("AGENFACT_MAX_CONCURRENT_UPLOADS", 4)?)?;
         Ok(Self::new(settings, max_concurrent))
     }
 
@@ -160,11 +160,11 @@ impl UploadProtection {
         &self,
         request: &HttpRequest,
         uploads_path: &Path,
-    ) -> Result<UploadAdmission, FolioError> {
+    ) -> Result<UploadAdmission, AgenfactError> {
         let client_key = self.client_key(request);
         let request_count = self.record_request(&client_key).await;
         if request_count > self.settings.hard_limit {
-            return Err(FolioError::TooManyRequests {
+            return Err(AgenfactError::TooManyRequests {
                 reason: "upload rate limit exceeded".to_string(),
                 code: "rate_limited",
                 turnstile_site_key: None,
@@ -191,7 +191,7 @@ impl UploadProtection {
                     .await;
                 pass_cookie = Some(pass);
             } else {
-                return Err(FolioError::TooManyRequests {
+                return Err(AgenfactError::TooManyRequests {
                     reason: "additional upload verification is required".to_string(),
                     code: "challenge_required",
                     turnstile_site_key: self.settings.turnstile_site_key.clone(),
@@ -201,7 +201,7 @@ impl UploadProtection {
 
         self.check_disk_space(uploads_path)?;
         let permit = self.semaphore.clone().try_acquire_owned().map_err(|_| {
-            FolioError::TooManyRequests {
+            AgenfactError::TooManyRequests {
                 reason: "too many uploads are currently in progress".to_string(),
                 code: "upload_busy",
                 turnstile_site_key: None,
@@ -328,17 +328,17 @@ impl UploadProtection {
             .is_some_and(|expires_at| *expires_at > now)
     }
 
-    fn check_disk_space(&self, uploads_path: &Path) -> Result<(), FolioError> {
+    fn check_disk_space(&self, uploads_path: &Path) -> Result<(), AgenfactError> {
         if self.settings.min_free_disk_bytes == 0 {
             return Ok(());
         }
         let available =
-            fs2::available_space(uploads_path).map_err(|error| FolioError::Internal {
+            fs2::available_space(uploads_path).map_err(|error| AgenfactError::Internal {
                 source: error.to_string(),
                 context: Some("check upload disk capacity".to_string()),
             })?;
         if available < self.settings.min_free_disk_bytes {
-            return Err(FolioError::InsufficientStorage {
+            return Err(AgenfactError::InsufficientStorage {
                 reason: "upload storage is below its configured safety reserve".to_string(),
             });
         }
@@ -349,12 +349,12 @@ impl UploadProtection {
         &self,
         token: &str,
         remote_ip: Option<IpAddr>,
-    ) -> Result<(), FolioError> {
+    ) -> Result<(), AgenfactError> {
         let secret =
             self.settings
                 .turnstile_secret
                 .as_deref()
-                .ok_or_else(|| FolioError::Internal {
+                .ok_or_else(|| AgenfactError::Internal {
                     source: "Turnstile secret is not configured".to_string(),
                     context: None,
                 })?;
@@ -372,16 +372,16 @@ impl UploadProtection {
             .form(&form)
             .send()
             .await
-            .map_err(|error| FolioError::Forbidden {
+            .map_err(|error| AgenfactError::Forbidden {
                 reason: format!("upload verification failed: {}", error),
             })?
             .error_for_status()
-            .map_err(|error| FolioError::Forbidden {
+            .map_err(|error| AgenfactError::Forbidden {
                 reason: format!("upload verification failed: {}", error),
             })?
             .json::<TurnstileResponse>()
             .await
-            .map_err(|error| FolioError::Forbidden {
+            .map_err(|error| AgenfactError::Forbidden {
                 reason: format!("invalid upload verification response: {}", error),
             })?;
 
@@ -390,7 +390,7 @@ impl UploadProtection {
             || response.action.as_deref() != Some("upload")
             || response.hostname.as_deref() != expected_hostname
         {
-            return Err(FolioError::Forbidden {
+            return Err(AgenfactError::Forbidden {
                 reason: "upload verification was rejected".to_string(),
             });
         }
@@ -441,12 +441,12 @@ type TurnstileConfig = (Option<String>, Option<String>, Option<String>);
 fn validate_rate_limits(soft_limit: usize, hard_limit: usize) -> Result<(usize, usize), String> {
     if soft_limit > hard_limit {
         return Err(format!(
-            "FOLIO_UPLOAD_RATE_SOFT_LIMIT ({soft_limit}) must not exceed FOLIO_UPLOAD_RATE_HARD_LIMIT ({hard_limit})"
+            "AGENFACT_UPLOAD_RATE_SOFT_LIMIT ({soft_limit}) must not exceed AGENFACT_UPLOAD_RATE_HARD_LIMIT ({hard_limit})"
         ));
     }
     if hard_limit > MAX_REQUESTS_PER_CLIENT {
         return Err(format!(
-            "FOLIO_UPLOAD_RATE_HARD_LIMIT ({hard_limit}) exceeds the maximum supported value ({MAX_REQUESTS_PER_CLIENT})"
+            "AGENFACT_UPLOAD_RATE_HARD_LIMIT ({hard_limit}) exceeds the maximum supported value ({MAX_REQUESTS_PER_CLIENT})"
         ));
     }
     Ok((soft_limit, hard_limit))
@@ -464,7 +464,7 @@ fn validate_turnstile_config(
         Ok((site_key, secret, hostname))
     } else {
         Err(
-            "Turnstile requires FOLIO_TURNSTILE_SITE_KEY, FOLIO_TURNSTILE_SECRET, and FOLIO_TURNSTILE_HOSTNAME to be configured together"
+            "Turnstile requires AGENFACT_TURNSTILE_SITE_KEY, AGENFACT_TURNSTILE_SECRET, and AGENFACT_TURNSTILE_HOSTNAME to be configured together"
                 .to_string(),
         )
     }
@@ -512,11 +512,11 @@ fn validated_duration(name: &str, seconds: u64) -> Result<Duration, String> {
 
 fn validate_max_concurrent(value: usize) -> Result<usize, String> {
     if value == 0 {
-        return Err("FOLIO_MAX_CONCURRENT_UPLOADS must be greater than zero".to_string());
+        return Err("AGENFACT_MAX_CONCURRENT_UPLOADS must be greater than zero".to_string());
     }
     if value > Semaphore::MAX_PERMITS {
         return Err(format!(
-            "FOLIO_MAX_CONCURRENT_UPLOADS ({value}) exceeds the maximum supported value ({})",
+            "AGENFACT_MAX_CONCURRENT_UPLOADS ({value}) exceeds the maximum supported value ({})",
             Semaphore::MAX_PERMITS
         ));
     }
@@ -548,15 +548,15 @@ mod tests {
 
     #[test]
     fn configuration_parsers_reject_invalid_explicit_values() {
-        assert!(parse_env_value::<usize>("FOLIO_UPLOAD_RATE_HARD_LIMIT", "many").is_err());
-        assert!(parse_env_value::<u64>("FOLIO_UPLOAD_RATE_WINDOW_SECS", "-1").is_err());
-        assert!(parse_env_value::<bool>("FOLIO_TRUST_CF_CONNECTING_IP", "yes").is_err());
+        assert!(parse_env_value::<usize>("AGENFACT_UPLOAD_RATE_HARD_LIMIT", "many").is_err());
+        assert!(parse_env_value::<u64>("AGENFACT_UPLOAD_RATE_WINDOW_SECS", "-1").is_err());
+        assert!(parse_env_value::<bool>("AGENFACT_TRUST_CF_CONNECTING_IP", "yes").is_err());
     }
 
     #[test]
     fn runtime_bounds_reject_zero_and_overflowing_values() {
-        assert!(validated_duration("FOLIO_UPLOAD_RATE_WINDOW_SECS", 0).is_err());
-        assert!(validated_duration("FOLIO_TURNSTILE_PASS_TTL_SECS", u64::MAX).is_err());
+        assert!(validated_duration("AGENFACT_UPLOAD_RATE_WINDOW_SECS", 0).is_err());
+        assert!(validated_duration("AGENFACT_TURNSTILE_PASS_TTL_SECS", u64::MAX).is_err());
         assert!(validate_max_concurrent(0).is_err());
         assert!(validate_max_concurrent(Semaphore::MAX_PERMITS + 1).is_err());
     }
@@ -568,7 +568,7 @@ mod tests {
             validate_turnstile_config(
                 Some("site-key".to_string()),
                 Some("secret".to_string()),
-                Some("folio.example".to_string()),
+                Some("agenfact.example".to_string()),
             )
             .is_ok()
         );
@@ -576,7 +576,7 @@ mod tests {
         let partial_configurations = [
             (Some("site-key".to_string()), None, None),
             (None, Some("secret".to_string()), None),
-            (None, None, Some("folio.example".to_string())),
+            (None, None, Some("agenfact.example".to_string())),
             (
                 Some("site-key".to_string()),
                 Some("secret".to_string()),
@@ -585,12 +585,12 @@ mod tests {
             (
                 Some("site-key".to_string()),
                 None,
-                Some("folio.example".to_string()),
+                Some("agenfact.example".to_string()),
             ),
             (
                 None,
                 Some("secret".to_string()),
-                Some("folio.example".to_string()),
+                Some("agenfact.example".to_string()),
             ),
         ];
         for (site_key, secret, hostname) in partial_configurations {
@@ -675,7 +675,7 @@ mod tests {
         settings.soft_limit = 0;
         settings.turnstile_site_key = Some("site-key".to_string());
         settings.turnstile_secret = Some("secret".to_string());
-        settings.turnstile_hostname = Some("folio.example".to_string());
+        settings.turnstile_hostname = Some("agenfact.example".to_string());
         let protection = UploadProtection::new(settings, 1);
         let temp_dir = tempfile::tempdir().unwrap();
         let request = TestRequest::default()
@@ -689,7 +689,7 @@ mod tests {
 
         assert!(matches!(
             error,
-            FolioError::TooManyRequests {
+            AgenfactError::TooManyRequests {
                 code: "challenge_required",
                 turnstile_site_key: Some(ref key),
                 ..
@@ -717,7 +717,7 @@ mod tests {
         };
         assert!(matches!(
             error,
-            FolioError::TooManyRequests {
+            AgenfactError::TooManyRequests {
                 code: "rate_limited",
                 ..
             }
@@ -730,7 +730,7 @@ mod tests {
         settings.soft_limit = 0;
         settings.turnstile_site_key = Some("site-key".to_string());
         settings.turnstile_secret = Some("secret".to_string());
-        settings.turnstile_hostname = Some("folio.example".to_string());
+        settings.turnstile_hostname = Some("agenfact.example".to_string());
         let protection = UploadProtection::new(settings, 1);
         protection
             .store_pass(
@@ -765,7 +765,7 @@ mod tests {
         };
         assert!(matches!(
             error,
-            FolioError::TooManyRequests {
+            AgenfactError::TooManyRequests {
                 code: "upload_busy",
                 ..
             }
@@ -784,7 +784,7 @@ mod tests {
             Ok(_) => panic!("expected storage rejection"),
             Err(error) => error,
         };
-        assert!(matches!(error, FolioError::InsufficientStorage { .. }));
+        assert!(matches!(error, AgenfactError::InsufficientStorage { .. }));
     }
 
     #[test]
@@ -823,9 +823,9 @@ mod tests {
     async fn siteverify_accepts_only_expected_hostname_and_action() {
         let mut settings = settings();
         settings.turnstile_secret = Some("secret".to_string());
-        settings.turnstile_hostname = Some("folio.example".to_string());
+        settings.turnstile_hostname = Some("agenfact.example".to_string());
         settings.siteverify_url =
-            siteverify_server(r#"{"success":true,"hostname":"folio.example","action":"upload"}"#)
+            siteverify_server(r#"{"success":true,"hostname":"agenfact.example","action":"upload"}"#)
                 .await;
         let protection = UploadProtection::new(settings, 1);
 
@@ -836,15 +836,15 @@ mod tests {
     async fn siteverify_rejects_wrong_action() {
         let mut settings = settings();
         settings.turnstile_secret = Some("secret".to_string());
-        settings.turnstile_hostname = Some("folio.example".to_string());
+        settings.turnstile_hostname = Some("agenfact.example".to_string());
         settings.siteverify_url =
-            siteverify_server(r#"{"success":true,"hostname":"folio.example","action":"other"}"#)
+            siteverify_server(r#"{"success":true,"hostname":"agenfact.example","action":"other"}"#)
                 .await;
         let protection = UploadProtection::new(settings, 1);
 
         assert!(matches!(
             protection.verify_turnstile("token", None).await,
-            Err(FolioError::Forbidden { .. })
+            Err(AgenfactError::Forbidden { .. })
         ));
     }
 }
