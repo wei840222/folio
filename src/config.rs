@@ -17,6 +17,10 @@ pub struct Agenfact {
     pub max_upload_ttl_secs: u64,
     pub max_upload_text_field_size: usize,
     pub max_authorized_emails: usize,
+    pub couchdb_url: Option<String>,
+    pub couchdb_db: String,
+    pub couchdb_user: Option<String>,
+    pub couchdb_password: Option<String>,
 }
 
 impl Agenfact {
@@ -126,6 +130,10 @@ impl Default for Agenfact {
             max_upload_ttl_secs: 7 * 24 * 60 * 60,
             max_upload_text_field_size: 4 * 1024,
             max_authorized_emails: 50,
+            couchdb_url: None,
+            couchdb_db: String::from("agenfact"),
+            couchdb_user: None,
+            couchdb_password: None,
         }
     }
 }
@@ -276,16 +284,8 @@ mod tests {
         #[test]
         fn with_custom_uploads_path() {
             let config = Agenfact {
-                address: String::from("127.0.0.1"),
-                port: 8000,
-                web_path: String::from("./web"),
                 uploads_path: String::from("./custom_uploads"),
-                data_path: String::from("./data"),
-                max_upload_size: 25 * 1024 * 1024,
-                default_upload_ttl_secs: 7 * 24 * 60 * 60,
-                max_upload_ttl_secs: 7 * 24 * 60 * 60,
-                max_upload_text_field_size: 4 * 1024,
-                max_authorized_emails: 50,
+                ..Agenfact::default()
             };
             let path = config.build_full_upload_path(&PathBuf::from("test.txt"));
 
@@ -306,16 +306,8 @@ mod tests {
         #[test]
         fn absolute_path_ignores_current_dir() {
             let config = Agenfact {
-                address: String::from("127.0.0.1"),
-                port: 8000,
-                web_path: String::from("./web"),
                 uploads_path: String::from("/tmp/test_uploads"),
-                data_path: String::from("./data"),
-                max_upload_size: 25 * 1024 * 1024,
-                default_upload_ttl_secs: 7 * 24 * 60 * 60,
-                max_upload_ttl_secs: 7 * 24 * 60 * 60,
-                max_upload_text_field_size: 4 * 1024,
-                max_authorized_emails: 50,
+                ..Agenfact::default()
             };
             let path = config.build_full_upload_path(&PathBuf::from("test.txt"));
 

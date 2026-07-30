@@ -1,0 +1,42 @@
+version: '3.8'
+
+services:
+  couchdb:
+    image: couchdb:3
+    container_name: agenfact-couchdb
+    ports:
+      - "5984:5984"
+    environment:
+      - COUCHDB_USER=admin
+      - COUCHDB_PASSWORD=password
+    volumes:
+      - couchdb_data:/opt/couchdb/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5984/"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  agenfact:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: agenfact-app
+    ports:
+      - "8080:8080"
+    environment:
+      - RUST_LOG=info,agenfact=debug
+      - AGENFACT_ADDRESS=0.0.0.0
+      - AGENFACT_PORT=8080
+      - AGENFACT_COUCHDB_URL=http://couchdb:5984
+      - AGENFACT_COUCHDB_DB=agenfact
+      - AGENFACT_COUCHDB_USER=admin
+      - AGENFACT_COUCHDB_PASSWORD=password
+      # Dev HS256 secret for testing JWT authentication
+      - AGENFACT_CF_ACCESS_HS256_SECRET=dev-secret-key-for-testing-12345
+    depends_on:
+      couchdb:
+        condition: service_healthy
+
+volumes:
+  couchdb_data:

@@ -1,5 +1,6 @@
 mod auth;
 mod config;
+mod couchdb;
 mod error;
 mod expiry;
 mod files;
@@ -88,17 +89,31 @@ async fn main() -> std::io::Result<()> {
             .map_err(|reason| std::io::Error::new(std::io::ErrorKind::InvalidInput, reason))?,
     );
 
+    let couchdb_store = couchdb::CouchDbStore::new(&config).map(Arc::new);
+    if let Some(ref cs) = couchdb_store {
+        log::info!("Initializing CouchDB backend at {:?}", config.couchdb_url);
+        cs.init_db()
+            .await
+            .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))?;
+        cs.clone().spawn_sweeper(Duration::from_secs(60));
+    }
+
     let bind = (config.address.clone(), config.port);
     let web_path = config.web_path.clone();
 
     HttpServer::new(move || {
-        App::new()
+        let mut app = App::new()
             .app_data(web::Data::new(config.clone()))
             .app_data(web::Data::new(expiry_store.clone()))
             .app_data(web::Data::new(private_index_store.clone()))
             .app_data(web::Data::new(access_auth.clone()))
-            .app_data(web::Data::new(upload_protection.clone()))
-            .service(health)
+            .app_data(web::Data::new(upload_protection.clone()));
+
+        if let Some(ref cs) = couchdb_store {
+            app = app.app_data(web::Data::new(cs.clone()));
+        }
+
+        app.service(health)
             .service(uploads::upload_file)
             .service(files::get_file)
             .service(files::create_file)

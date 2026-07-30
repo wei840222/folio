@@ -212,11 +212,7 @@ mod tests {
             web_path: "./web/dist".to_string(),
             uploads_path: temp_dir.path().to_string_lossy().to_string(),
             data_path: temp_dir.path().to_string_lossy().to_string(),
-            max_upload_size: 25 * 1024 * 1024,
-            default_upload_ttl_secs: 7 * 24 * 60 * 60,
-            max_upload_ttl_secs: 7 * 24 * 60 * 60,
-            max_upload_text_field_size: 4 * 1024,
-            max_authorized_emails: 50,
+            ..config::Agenfact::default()
         };
         ExpiryStore::new(&config)
     }
