@@ -209,6 +209,7 @@ pub async fn upload_file(
     Ok(response.json(json!({
         "message": "file uploaded successfully",
         "expires_at": expires_at,
+        "preview_url": format!("/?preview=/files/{}", file_name),
     })))
 }
 

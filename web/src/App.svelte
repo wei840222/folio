@@ -33,6 +33,28 @@
   let showQrModal = $state(false);
   let showPreviewModal = $state(false);
 
+  // Auto-preview query param detection (?preview=/files/...)
+  let autoPreviewUrl = $state('');
+  let autoPreviewFilename = $state('');
+  let showAutoPreviewModal = $state(false);
+
+  $effect(() => {
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      const queryVal = params.get('preview') || params.get('preview_url') || params.get('view');
+      if (queryVal && !showAutoPreviewModal) {
+        let fileUrl = queryVal;
+        if (!fileUrl.startsWith('http://') && !fileUrl.startsWith('https://') && !fileUrl.startsWith('/')) {
+          fileUrl = `/files/${fileUrl}`;
+        }
+        const filename = fileUrl.split('/').pop()?.split('?')[0] || 'artifact';
+        autoPreviewUrl = fileUrl;
+        autoPreviewFilename = filename;
+        showAutoPreviewModal = true;
+      }
+    }
+  });
+
   let artifactBadge = $derived(
     uploadedFile ? getArtifactBadge(uploadedFile.name) : null
   );
@@ -371,6 +393,14 @@
       url={shortUrl}
       filename={uploadedFile.name}
       onclose={() => (showPreviewModal = false)}
+    />
+  {/if}
+
+  {#if showAutoPreviewModal && autoPreviewUrl}
+    <ArtifactPreviewModal
+      url={autoPreviewUrl}
+      filename={autoPreviewFilename}
+      onclose={() => (showAutoPreviewModal = false)}
     />
   {/if}
 </main>
