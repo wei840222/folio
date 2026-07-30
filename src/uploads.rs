@@ -606,6 +606,22 @@ fn consume_request_budget(
 fn parse_duration(s: &str) -> Result<Duration, String> {
     const MAX_VALUE: u64 = 10_000_000;
 
+    let s = s.trim();
+    if s.is_empty() {
+        return Err("Invalid duration format".to_string());
+    }
+
+    // Direct plain seconds (pure number)
+    if let Ok(val) = s.parse::<u64>() {
+        if val > MAX_VALUE {
+            return Err(format!(
+                "Duration value {} exceeds maximum allowed {}",
+                val, MAX_VALUE
+            ));
+        }
+        return Ok(Duration::from_secs(val));
+    }
+
     let len = s.len();
     if len < 2 {
         return Err("Invalid duration format".to_string());
@@ -697,6 +713,17 @@ mod tests {
             let filename = id.file_name(Some("tar.gz"));
             assert_eq!(filename, "abc123.tar.gz");
         }
+    }
+
+    #[test]
+    fn parses_plain_seconds_and_unit_durations() {
+        assert_eq!(parse_duration("604800").unwrap(), Duration::from_secs(604800));
+        assert_eq!(parse_duration("3600").unwrap(), Duration::from_secs(3600));
+        assert_eq!(parse_duration("7d").unwrap(), Duration::from_secs(604800));
+        assert_eq!(parse_duration("1h").unwrap(), Duration::from_secs(3600));
+        assert_eq!(parse_duration("30m").unwrap(), Duration::from_secs(1800));
+        assert_eq!(parse_duration("10s").unwrap(), Duration::from_secs(10));
+        assert!(parse_duration("invalid").is_err());
     }
 
     #[test]
