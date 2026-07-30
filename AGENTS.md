@@ -32,21 +32,33 @@ agenfact/
 │   ├── expiry.rs                 # Background sweeper (60s interval), ExpiryStore
 │   ├── path.rs                   # SafePath validation for user-supplied paths
 │   ├── private_index.rs          # Private file authorization, PrivateIndexStore
+│   ├── couchdb.rs                # CouchDB persistence & 60s background sweeper
+│   ├── upload_protection.rs      # Turnstile challenge, rate limiter, disk check
 │   ├── store.rs                  # Generic mutex-protected JSON store with atomic writes
 │   └── test_utils.rs             # Test helpers (#[cfg(test)])
 ├── web/                          # Svelte frontend
 │   ├── src/
 │   │   ├── App.svelte            # Main upload UI
 │   │   ├── components/
-│   │   │   ├── FileUploadZone.svelte # Drag & drop upload
-│   │   │   └── DownloadLink.svelte   # Short URL display + copy
+│   │   │   ├── FileUploadZone.svelte   # Drag & drop upload + laser sweep
+│   │   │   ├── DownloadLink.svelte     # Short URL display + copy
+│   │   │   ├── UploadOptions.svelte    # Email ACL & TTL settings
+│   │   │   ├── ArtifactPreviewModal.svelte # Markdown/Code/Media viewer
+│   │   │   ├── QRCodeModal.svelte      # Mobile share QR code
+│   │   │   └── TurnstileWidget.svelte  # Cloudflare Turnstile challenge widget
 │   │   ├── main.ts               # Entry point (Svelte mount)
-│   │   ├── app.css               # Tailwind CSS imports
+│   │   ├── app.css               # Tailwind CSS imports & cyber styles
 │   │   └── app.d.ts              # Svelte type declarations
 │   ├── package.json              # pnpm install, pnpm dev, pnpm run build
 │   ├── vite.config.ts            # Vite + Svelte + Tailwind config
 │   ├── svelte.config.js          # Svelte preprocessor config
-│   └── tsconfig.json             # TypeScript config
+│   ├── theme.css                 # Theme CSS custom properties
+│   ├── tokens.json               # Design Tokens specification
+│   └── DESIGN.md                 # UI design system specification
+├── scripts/                      # Utility scripts
+│   └── migrate_to_couchdb.py     # One-time migration script from JSON to CouchDB
+├── skills/                       # AI Agent Skills
+│   └── agenfact/                 # Agenfact skill for AI agents (upload.py, compress.py)
 ├── data/                         # Runtime data (created at runtime)
 │   ├── expiry-index.json         # File expiration tracking
 │   └── private-files.json        # Private file authorization lists
@@ -54,6 +66,7 @@ agenfact/
 ├── .gitea/workflows/             # CI/CD pipelines
 │   ├── rust.yml                  # Build + test + Trivy scan
 │   └── docker.yml                # Docker build + Trivy + push
+├── docker-compose.yml            # Docker Compose configuration (App + CouchDB)
 ├── Dockerfile                    # Multi-stage: node/pnpm (web) + rust (backend) → debian
 └── Cargo.toml                    # Dependencies: actix-web, actix-files, actix-multipart, figment, jsonwebtoken, reqwest
 ```
@@ -87,7 +100,7 @@ agenfact/
 ### JWT Authentication
 
 - **Request Helper**: `VerifiedIdentity::from_request()` extracts and verifies tokens from Actix `HttpRequest`
-- **Token Sources**: `Cf-Access-Jwt-Assertion` header (priority) OR `Authorization: Bearer ***
+- **Token Sources**: `Cf-Access-Jwt-Assertion` header (priority) OR `Authorization: Bearer ***`
 - **Verify Modes**:
   - **RS256 + JWKS**: Production. Fetches from Cloudflare, caches 1hr in `Mutex<Option<(JwkSet, Instant)>>`
   - **HS256**: Testing. Uses `AGENFACT_CF_ACCESS_HS256_SECRET` env var
@@ -132,7 +145,16 @@ email ∈ authorized_emails?
 | `uploads_path` | `AGENFACT_UPLOADS_PATH` | `./uploads` | Uploaded files storage |
 | `data_path` | `AGENFACT_DATA_PATH` | `./data` | JSON index files location |
 | `default_upload_ttl_secs` | `AGENFACT_DEFAULT_UPLOAD_TTL_SECS` | `604800` | Positive default TTL when `expire` is omitted |
-| `max_upload_ttl_secs` | `AGENFACT_MAX_UPLOAD_TTL_SECS` | `604800` | Positive maximum accepted TTL; must be at least the default and produce a client-representable expiration timestamp |
+| `max_upload_ttl_secs` | `AGENFACT_MAX_UPLOAD_TTL_SECS` | `604800` | Positive maximum accepted TTL |
+
+### CouchDB Settings (`config.rs`)
+
+| Key | Env Var | Default | Description |
+|-----|---------|---------|-------------|
+| `couchdb_url` | `AGENFACT_COUCHDB_URL` | _(unset)_ | Base URL of CouchDB instance |
+| `couchdb_db` | `AGENFACT_COUCHDB_DB` | `agenfact` | Target CouchDB database name |
+| `couchdb_user` | `AGENFACT_COUCHDB_USER` | _(unset)_ | CouchDB Basic auth username |
+| `couchdb_password` | `AGENFACT_COUCHDB_PASSWORD` | _(unset)_ | CouchDB Basic auth password |
 
 ### Cloudflare Access Settings (`auth.rs:from_env()`)
 
@@ -162,18 +184,6 @@ email ∈ authorized_emails?
 
 The Turnstile site key, secret, and expected hostname are an all-or-none configuration set. Partial configuration is rejected at startup.
 
-### Adding New Config Fields
-
-1. Add field to `Agenfact` struct in `config.rs`:
-   ```rust
-   pub struct Agenfact {
-       // ... existing fields
-       pub new_field: String,
-   }
-   ```
-2. Add default in `impl Default for Agenfact`
-3. Access in handlers via `web::Data<config::Agenfact>` or `config.build_full_*_path()` methods
-
 ---
 
 ## 🗄️ Data Persistence
@@ -191,47 +201,11 @@ tokio::fs::rename(&tmp_path, &index_path).await?;
 
 **Why**: Prevents corruption if process crashes mid-write.
 
-### `data/expiry-index.json`
+### CouchDB Distributed Storage (`src/couchdb.rs`)
 
-```json
-{
-  "entries": [
-    { "path": "/absolute/path/to/file.jpg", "expire_at_unix": 1704067200 }
-  ]
-}
-```
-
-- **Written by**: `ExpiryStore::publish()` (called from `uploads::upload_file`)
-- **Read/Cleaned by**: `ExpiryStore::sweep_once()` (background thread, 60s interval)
-
-### `data/private-files.json`
-
-```json
-{
-  "entries": [
-    {
-      "path": "relative/path/secret.pdf",
-      "authorized_emails": ["bob@example.com", "alice@example.com"]
-    }
-  ]
-}
-```
-
-- **Written by**: `PrivateIndexStore::mark_private()` (called from `uploads::upload_file` when `authorized_emails` form field present)
-- **Read by**: `PrivateIndexStore::is_private()`, `get_entry()`
-
-### File and Metadata Lifecycle
-
-`JsonFileStore` protects each JSON index update with an in-process `Mutex<()>` and tmp-file-plus-rename writes. It does **not** make a filesystem mutation and its related JSON mutations transactional.
-
-Random uploads are first written under the non-served `.agenfact-staging` directory. `ExpiryStore::publish()` holds the expiry-store lock while registering expiry and atomically creating a no-clobber final link; startup removes stranded staging files and private/expiry metadata entries whose final file does not exist.
-
-- `POST /uploads` writes only to staging before private metadata is committed. `ExpiryStore::publish()` then registers expiry and creates the final path without overwriting an existing file. Failures clean inaccessible staging and roll back metadata; startup reconciles staging and metadata left by a process crash before serving requests.
-- Explicit-path `POST /files/<path>` and `PUT /files/<path>` bypass the random-upload size limit and expiry scheduling. Treat them as a separate, WAF-protected API contract; do not assume uploads created through them expire.
-- `DELETE /files/<path>` deletes only the file. It leaves corresponding expiry or private-index entries behind until restart reconciliation; recreating that path before restart can therefore inherit stale metadata.
-- During an expiry sweep, a failed `remove_file` is logged but its entry is still removed from the index, so the sweeper will not retry it. Preserve or requeue the entry when changing this behavior.
-
-When modifying these flows, define the failure/compensation order first and add tests for both the successful path and every metadata-write or deletion failure.
+When `AGENFACT_COUCHDB_URL` is configured, `CouchDbStore` is initialized and attached to managed state:
+- Uploads and metadata are synced into CouchDB Documents (`CouchDoc`).
+- Background sweeper thread runs every 60 seconds querying the `_design/expiry/_view/by_expire_at` view to clean expired documents.
 
 ---
 
@@ -243,17 +217,11 @@ When modifying these flows, define the failure/compensation order first and add 
 # Run with debug logging
 RUST_LOG=debug cargo run
 
-# Run tests
+# Run unit tests (93 tests)
 cargo test
 
 # Check without building
 cargo check
-
-# Format code
-cargo fmt
-
-# Lint
-cargo clippy
 ```
 
 ### Frontend (Svelte + Vite)
@@ -270,140 +238,34 @@ pnpm dev
 # Production build → dist/
 pnpm run build
 
-# Type check
-pnpm run check  # or svelte-check --tsconfig ./tsconfig.app.json
+# Unit test & type check
+pnpm test
+pnpm run check
 ```
 
-### Docker
+### Docker Compose (App + CouchDB)
 
 ```bash
-# Build locally
-docker build -t agenfact:local .
-
-# Run
-docker run -p 8080:8080 \
-  -e AGENFACT_CF_ACCESS_ISSUER=https://... \
-  -e AGENFACT_CF_ACCESS_AUD=... \
-  agenfact:local
+# Start full stack (App + CouchDB)
+docker compose up --build
 ```
-
----
-
-## 🛠️ Common Modification Patterns
-
-### Adding a New Route
-
-1. **Create handler** in appropriate module (`files.rs`, `uploads.rs`, or new module)
-2. **Register route** in `main.rs` inside `HttpServer::new(...)`:
-   ```rust
-   .service(new_handler)
-   ```
-3. **Add managed state** if needed:
-   ```rust
-   .app_data(web::Data::new(new_state))
-   ```
-4. **Update Cloudflare WAF rules** if the route needs write protection
-
-### Adding a New Config Field
-
-1. Add to `Agenfact` struct in `config.rs`:
-   ```rust
-   pub struct Agenfact {
-       // ... existing fields
-       pub new_field: String,
-   }
-   ```
-2. Add default in `impl Default for Agenfact`
-3. Access in handlers via `web::Data<config::Agenfact>`
-4. Add env var documentation to `README.md`
-
-### Modifying Auth Logic
-
-1. **JWT Claims**: Update `AccessClaims` struct in `auth.rs`
-2. **Verify Logic**: Modify `verify_claims()` — **both** RS256 and HS256 branches
-3. **Request Helper**: Update `VerifiedIdentity::from_request()` if header extraction changes
-4. **Update tests** in `auth.rs:mod tests`
-
-### Adding Frontend Component
-
-1. Create in `web/src/components/`
-2. Use Tailwind CSS 4 for styling (no separate CSS files)
-3. Use `@lucide/svelte` for icons
-4. Import in `App.svelte` or the relevant Svelte parent component
-5. Run `pnpm run check` to verify
-
-### Modifying Upload Flow
-
-1. **`uploads::upload_file()`** handles:
-   - Random filename generation (`UploadId::new(8)`)
-   - Extension detection (filename > Content-Type > no extension)
-   - Raw multipart request, part-count, field-schema, body-deadline, and file-size enforcement
-   - Private marking (`private_store.mark_private()`)
-   - Atomic no-clobber publication and expiry registration (`expiry_store.publish()`)
-2. **Form fields**: Extend `UploadParts` and handle the field in `save_upload_payload()`
-3. **Query params**: Extend `UploadQuery` and extract it with `web::Query<UploadQuery>`
-4. Preserve cleanup behavior when introducing a failure after the file has been written.
-
----
-
-## 🐛 Key Pitfalls & Gotchas
-
-### Path Handling
-
-- ❌ **Never** use `PathBuf::join()` directly with user input
-- ✅ **Always** use `config.build_full_upload_path()` or `build_full_data_path()`
-- ✅ **Always** validate user-provided route paths with `SafePath::from_user_input()`
-
-### JWT Testing
-
-- For local testing, set `AGENFACT_CF_ACCESS_HS256_SECRET` (uses HS256)
-- For production, **do not** set HS256 secret (forces RS256/JWKS)
-- `aud` claim can be string OR array — both supported (`deserialize_aud` in `auth.rs`)
-
-### Background Sweeper
-
-- Runs in **separate thread** (not async task) — uses `std::thread::spawn()`
-- Interval: **60 seconds** (hardcoded in `main.rs`)
-- Uses `Mutex<()>` to prevent race conditions on index file
-
-### File Extension Detection
-
-Priority order in `uploads.rs:upload_file()`:
-1. Filename extension (if present)
-2. Content-Type extension (if not `bin`)
-3. No extension (fallback)
-
-### Index File Locations
-
-- **Expiry index**: `data/expiry-index.json` (paths are **absolute**)
-- **Private index**: `data/private-files.json` (paths are **relative** to uploads root)
-
-### Direct File APIs
-
-- `POST /files/<path>` creates only when the path does not exist (`409` otherwise).
-- `PUT /files/<path>` creates or overwrites; it returns `201` for a new file and `200` for an update.
-- These endpoints currently do not apply the `POST /uploads` size limit, private marking, or TTL scheduling. Do not reuse them as a drop-in replacement for the random upload flow without deciding those policies explicitly.
-- Before changing delete or expiry behavior, account for stale entries in both JSON indices.
 
 ---
 
 ## 🔄 Quick Health Check
 
 ```bash
-# Backend compiles?
-cargo check
-
-# Tests pass?
+# Backend compiles & passes 93 tests?
 cargo test
 
-# Frontend type-checks and builds?
-cd web && pnpm run check && pnpm run build
+# Frontend type-checks and passes unit tests?
+cd web && pnpm test && pnpm run check && pnpm run build
 
-# Full stack runs locally?
-RUST_LOG=info cargo run
-# Then open http://localhost:8000
+# Full stack runs locally with Docker Compose?
+docker compose up --build
+# Then open http://localhost:8080
 ```
 
 ---
 
-_Last updated: 2026-07-30. For questions or clarifications, refer to the source code comments and inline documentation._
+_Last updated: 2026-07-31. For questions or clarifications, refer to the source code comments and inline documentation._

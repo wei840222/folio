@@ -1,15 +1,15 @@
 # Agenfact
 
-**Agenfact** (`Agent` + `Factum`) is a lightweight, stateless digital artifact hosting and delivery platform built specifically for **AI Agents** (and developers) to easily output, host, and share their generated artifacts (HTML pages, Markdown reports, code snippets, UI mockups, and files) with built-in access control and anti-abuse protection.
+**Agenfact** (`Agent` + `Factum`) is a lightweight, stateless digital artifact hosting and delivery platform built specifically for **AI Agents** (and developers) to easily output, host, and share their generated artifacts (HTML pages, Markdown reports, code snippets, UI mockups, and files) with built-in access control, CouchDB persistence option, and anti-abuse protection.
 
 ---
 
 ### 🧬 Name Origin & Concept
 
-* **Name**: **Agenfact** `/ˈeɪ.dʒən.fækt/` (代理人製品 / 賽博產物樞紐)
+* **Name**: **Agenfact** `/ˈeɪ.dʒən.fækt/` (Agent Artifact / Cyber Entity Hub)
 * **Etymology**: 
-  * **`Agent`** — Autonomous AI Agents / Silicon Lifeforms (自主 AI 代理人 / 矽基生命).
-  * **`Factum`** — Latin for *"a thing done or made"* (被製造出的實體/製品，即 Artifact 的字根源頭).
+  * **`Agent`** — Autonomous AI Agents / Silicon Lifeforms.
+  * **`Factum`** — Latin for *"a thing done or made"* (the etymological root of *Artifact*).
 * **Concept**: In modern AI workflows, agents produce complex digital artifacts. Agenfact acts as a high-speed, stateless uplink core where agents deposit their creations for instant rendering, secure email-based JWT access authorization, automatic TTL lifecycle expiration, and CouchDB distributed persistence.
 
 ---
@@ -33,64 +33,118 @@
 - **Random filename generation**: `/uploads` generates unique 8-character filenames.
 - **Custom file paths**: `/files/:path` supports explicit create/update/delete.
 - **Path normalization**: file paths are normalized to prevent directory traversal attacks.
-- **Local expiry index + sweeper**: expiration is tracked in `data/expiry-index.json` and cleaned by an in-process background sweeper.
-- **Private file redirect flow**: private-index (tracked in `data/private-files.json`) matches on `/files/:path` redirect to `/private-files/:path`.
-- **Cloudflare Access verification**: `/private-files/:path` verifies `Cf-Access-Jwt-Assertion` or standard `Authorization: Bearer *** JWT (RS256/JWKS with 1hr cache, or HS256 for local testing).
-- **Web interface**: Svelte 5 + Vite + TypeScript + Tailwind CSS 4 upload UI with drag & drop, short URL generation, and one-click copy.
+- **Local JSON index & CouchDB backend**: supports local JSON indices (`data/`) or CouchDB distributed storage (`couchdb_url`).
+- **File lifecycle & expiry sweeper**: expiration is tracked with in-process and CouchDB background sweepers.
+- **Private file redirect flow**: private-index matches on `/files/:path` redirect to `/private-files/:path`.
+- **Cloudflare Access verification**: `/private-files/:path` verifies `Cf-Access-Jwt-Assertion` or standard `Authorization: Bearer ***` JWT (RS256/JWKS with 1hr cache, or HS256 for local testing).
+- **Cyber Dark Web UI**: Svelte 5 + Vite + TypeScript + Tailwind CSS 4 upload UI with drag & drop, laser sweep animation, artifact preview modal (Markdown/Code/Media), short URL generation, and QR code sharing.
 
 ## Architecture
 
 ```mermaid
 flowchart TD
-    subgraph frontend["Web Frontend (Svelte 5)"]
-        direction LR
-        FE1[FileUploadZone] -->|POST /uploads| FE2[DownloadLink]
-        FE_DESC["Vite + TypeScript + Tailwind CSS 4"]
+    subgraph clients["Clients & Agents"]
+        direction TB
+        CLI["CLI / Agent Uploader (upload.py)"]
+        WEB["Svelte 5 Web UI (App.svelte)"]
+        
+        subgraph ui_comp["UI Components"]
+            FE1["FileUploadZone (Drag & Drop + Laser Sweep)"]
+            FE2["UploadOptions (Email ACL & TTL)"]
+            FE3["DownloadLink (Short URL & Copy)"]
+            FE4["ArtifactPreviewModal (Markdown/Code/Media)"]
+            FE5["QRCodeModal (Mobile Share)"]
+            FE6["TurnstileWidget (Anti-Abuse Challenge)"]
+        end
+        WEB --- ui_comp
+    end
+
+    subgraph edge["Security & Protection Layer"]
+        PROT["UploadProtection\n(Rate Limiter / Turnstile Cookie / Disk Check / CLI Token)"]
+        AUTH["AccessAuth & VerifiedIdentity\n(Cloudflare Access JWT RS256/JWKS / HS256)"]
+        SAFE["SafePath\n(Directory Traversal Prevention)"]
     end
 
     subgraph backend["Rust Backend (Actix Web 4)"]
-        direction LR
-        R1["/health"]
-        R2["/uploads POST"]
-        R3["/files GET"]
-        R4["/files POST"]
-        R5["/files PUT"]
-        R6["/files DELETE"]
-        R7["/private-files GET"]
-        R8["/ (SPA static)"]
+        R1["POST /uploads (Random Upload)"]
+        R2["GET /files/* (Public Download & Private Check)"]
+        R3["GET /private-files/* (JWT Email Auth Download)"]
+        R4["POST | PUT | DELETE /files/* (Explicit Path Ops)"]
+        R5["GET /health & Static SPA Server"]
     end
 
-    frontend -->|HTTP| backend
+    subgraph storage["Storage & Data Engine"]
+        STAGING[".agenfact-staging/\n(Staged Uploads)"]
+        FS["uploads/\n(Published Files Storage)"]
 
-    subgraph state["Managed State"]
-        direction LR
-        S1["config (Figment TOML+ENV)"]
-        S2["ExpiryStore (60s sweeper)"]
-        S3["PrivateIndexStore (JSON)"]
-        S4["AccessAuth (JWT / JWKS)"]
+        subgraph local_engine["Local JSON Engine"]
+            S_EXP["ExpiryStore\n(data/expiry-index.json)"]
+            S_PRIV["PrivateIndexStore\n(data/private-files.json)"]
+            SW1["60s Background Sweeper Thread"]
+            S_EXP --- SW1
+        end
+
+        subgraph couch_engine["Distributed CouchDB (Optional)"]
+            C_STORE["CouchDbStore\n(HTTP REST Client)"]
+            C_DB[("CouchDB Database")]
+            SW2["60s CouchDB Sweeper Thread"]
+            C_STORE --> C_DB
+            C_STORE --- SW2
+        end
     end
 
-    backend --> state
+    CLI -->|AGENFACT_UPLOAD_TOKEN / HTTP| R1
+    WEB -->|HTTP REST API| backend
+
+    R1 --> PROT
+    R1 --> STAGING
+    STAGING -->|Atomic Hard Link| FS
+    R1 --> S_EXP
+    R1 --> S_PRIV
+    R1 -.->|Sync Document| C_STORE
+
+    R2 --> SAFE
+    R2 -->|Check Private ACL| S_PRIV
+    R2 -->|302 Redirect if Private| R3
+
+    R3 --> AUTH
+    R3 -->|Serve Private File| FS
+
+    R4 --> SAFE
+    R4 --> FS
 ```
 
 ### Tech Stack
 
-| Layer | Technology |
-|-------|-----------|
-| Backend | Rust 2024 edition, Actix Web 4, Figment (config), jsonwebtoken, reqwest |
-| Frontend | Svelte 5, Vite, TypeScript, Tailwind CSS 4, Lucide icons |
-| Storage | Local filesystem (`uploads/`) + JSON indices (`data/`) |
-| Auth | Cloudflare Access JWT (RS256/JWKS or HS256) |
-| CI/CD | Gitea Actions (Rust test + Trivy scan + Docker build-push) |
+| Layer | Technology | Key Components |
+|-------|-----------|----------------|
+| Backend | Rust 2024 edition, Actix Web 4 | `main.rs`, `config.rs`, `path.rs` (`SafePath`) |
+| Auth & Security | Cloudflare Access JWT, Turnstile, Token Auth | `auth.rs` (RS256/JWKS & HS256), `upload_protection.rs` |
+| Frontend | Svelte 5, Vite, TypeScript, Tailwind CSS 4 | `App.svelte`, `FileUploadZone`, `ArtifactPreviewModal` |
+| Local Storage | Local filesystem & JSON indices | `uploads/`, `data/expiry-index.json`, `data/private-files.json` |
+| Cloud Storage | CouchDB distributed backend (Optional) | `couchdb.rs`, `docker-compose.yml`, `migrate_to_couchdb.py` |
+| Agent Skill | Python 3 + requests + ua-generator | `skills/agenfact/scripts/upload.py`, `compress.py` |
+| CI/CD | Gitea Actions & Docker | `.gitea/workflows/`, `Dockerfile`, `docker-compose.yml` |
 
 ## Usage
 
 ### Prerequisites
 
-- [Rust and Cargo](https://rustup.rs/) (2024 edition)
-- [Node.js](https://nodejs.org/) 20+ and [pnpm](https://pnpm.io/) (for frontend development)
+- [Docker & Docker Compose](https://docs.docker.com/get-docker/) (Recommended) OR
+- [Rust and Cargo](https://rustup.rs/) (2024 edition) & [Node.js](https://nodejs.org/) 20+ / [pnpm](https://pnpm.io/)
 
-### Running the Server
+### Running with Docker Compose (Recommended)
+
+Run Agenfact alongside CouchDB in one command:
+
+```bash
+docker compose up --build
+```
+
+- Web App: [http://localhost:8080](http://localhost:8080)
+- CouchDB Admin: [http://localhost:5984](http://localhost:5984)
+
+### Running Locally (Cargo)
 
 **Linux/macOS:**
 
@@ -106,23 +160,15 @@ $env:RUST_LOG="info"; cargo run
 
 With custom bind settings:
 
-**Linux/macOS:**
-
 ```bash
 RUST_LOG=info AGENFACT_ADDRESS=0.0.0.0 AGENFACT_PORT=8080 cargo run
 ```
 
-**Windows (PowerShell):**
-
-```powershell
-$env:RUST_LOG="info"; $env:AGENFACT_ADDRESS="0.0.0.0"; $env:AGENFACT_PORT="8080"; cargo run
-```
-
 ## Configuration
 
-Configured with `Agenfact.toml` and/or environment variables.
+Configured with `Agenfact.toml` and/or environment variables (`AGENFACT_*`).
 
-### Core
+### Core Settings
 
 | Key            | Environment Variable | Default      | Description                            |
 | -------------- | -------------------- | ------------ | -------------------------------------- |
@@ -132,7 +178,16 @@ Configured with `Agenfact.toml` and/or environment variables.
 | `uploads_path` | `AGENFACT_UPLOADS_PATH` | `./uploads`  | Upload storage path                    |
 | `data_path`    | `AGENFACT_DATA_PATH`    | `./data`     | Persistent metadata (index/state) path |
 | `default_upload_ttl_secs` | `AGENFACT_DEFAULT_UPLOAD_TTL_SECS` | `604800` | Positive default upload TTL when `expire` is omitted |
-| `max_upload_ttl_secs` | `AGENFACT_MAX_UPLOAD_TTL_SECS` | `604800` | Positive maximum accepted upload TTL; must be at least the default and produce a client-representable expiration timestamp |
+| `max_upload_ttl_secs` | `AGENFACT_MAX_UPLOAD_TTL_SECS` | `604800` | Positive maximum accepted upload TTL |
+
+### CouchDB Settings (Optional)
+
+| Key | Environment Variable | Default | Description |
+| --- | -------------------- | ------- | ----------- |
+| `couchdb_url` | `AGENFACT_COUCHDB_URL` | _(unset)_ | Base URL of CouchDB instance (e.g. `http://localhost:5984`) |
+| `couchdb_db` | `AGENFACT_COUCHDB_DB` | `agenfact` | Target CouchDB database name |
+| `couchdb_user` | `AGENFACT_COUCHDB_USER` | _(unset)_ | CouchDB Basic auth username |
+| `couchdb_password` | `AGENFACT_COUCHDB_PASSWORD` | _(unset)_ | CouchDB Basic auth password |
 
 ### Private access (Cloudflare Access)
 
@@ -147,28 +202,22 @@ Configured with `Agenfact.toml` and/or environment variables.
 
 | Environment Variable               | Default | Description                                                                                          |
 | ---------------------------------- | ------- | ---------------------------------------------------------------------------------------------------- |
-| `AGENFACT_UPLOAD_RATE_SOFT_LIMIT`     | `5`     | Requests per window before Turnstile challenge is required; must not exceed the hard limit            |
-| `AGENFACT_UPLOAD_RATE_HARD_LIMIT`     | `20`    | Hard rate limit (requests per window), accepted range `0..=100`; returns 429 when exceeded             |
+| `AGENFACT_UPLOAD_RATE_SOFT_LIMIT`     | `5`     | Requests per window before Turnstile challenge is required                                           |
+| `AGENFACT_UPLOAD_RATE_HARD_LIMIT`     | `20`    | Hard rate limit (requests per window), accepted range `0..=100`                                      |
 | `AGENFACT_UPLOAD_RATE_WINDOW_SECS`    | `60`    | Time window in seconds for rate counting                                                             |
-| `AGENFACT_TURNSTILE_PASS_TTL_SECS`  | `600`   | Duration (seconds) of the HttpOnly upload-pass cookie after successful Turnstile challenge           |
-| `AGENFACT_MIN_FREE_DISK_BYTES`      | `1073741824` | Minimum free disk space (1 GiB by default) required to accept uploads. Set to 0 to disable the check |
-| `AGENFACT_TRUST_CF_CONNECTING_IP`   | `false` | Trust `CF-Connecting-IP` header for client IP (only enable when behind Cloudflare proxy)             |
-| `AGENFACT_UPLOAD_TOKEN`             | _(unset)_ | Bearer token for CLI/automated uploads. Bypasses Turnstile challenge but still subject to rate limits |
+| `AGENFACT_TURNSTILE_PASS_TTL_SECS`  | `600`   | Duration (seconds) of the HttpOnly upload-pass cookie                                                |
+| `AGENFACT_MIN_FREE_DISK_BYTES`      | `1073741824` | Minimum free disk space (1 GiB by default) required to accept uploads                             |
+| `AGENFACT_TRUST_CF_CONNECTING_IP`   | `false` | Trust `CF-Connecting-IP` header for client IP                                                        |
+| `AGENFACT_UPLOAD_TOKEN`             | _(unset)_ | Bearer token for CLI/automated uploads. Bypasses Turnstile challenge                                |
 | `AGENFACT_TURNSTILE_SITE_KEY`       | _(unset)_ | Cloudflare Turnstile site key for frontend challenge widget                                          |
 | `AGENFACT_TURNSTILE_SECRET`         | _(unset)_ | Cloudflare Turnstile secret key for server-side verification                                         |
-| `AGENFACT_TURNSTILE_HOSTNAME`       | _(unset)_ | Expected hostname in Turnstile response (for validation)                                             |
-| `AGENFACT_TURNSTILE_SITEVERIFY_URL` | `https://challenges.cloudflare.com/turnstile/v0/siteverify` | Turnstile siteverify API endpoint (override for testing) |
+| `AGENFACT_TURNSTILE_HOSTNAME`       | _(unset)_ | Expected hostname in Turnstile response                                                              |
+| `AGENFACT_TURNSTILE_SITEVERIFY_URL` | `https://challenges.cloudflare.com/turnstile/v0/siteverify` | Turnstile siteverify API endpoint |
 | `AGENFACT_MAX_CONCURRENT_UPLOADS`   | `4`     | Maximum number of concurrent uploads allowed system-wide                                               |
-
-`AGENFACT_TURNSTILE_SITE_KEY`, `AGENFACT_TURNSTILE_SECRET`, and `AGENFACT_TURNSTILE_HOSTNAME` must be configured together. Agenfact refuses to start when only part of this set is configured.
-
-Uploads are streamed into the internal `.agenfact-staging` directory and published only after metadata is committed. Failed requests clean their staging file immediately; service startup removes stranded staging files and metadata entries whose final file was never published.
-
-Authorization is per-file based. Access lists are defined during upload via the `authorized_emails` field.
 
 ### Local Development / Testing (HS256)
 
-When `AGENFACT_CF_ACCESS_HS256_SECRET` is set, Agenfact will use this secret to verify JWTs instead of fetching JWKS from Cloudflare. This is useful for manual testing without a real Cloudflare Access setup.
+When `AGENFACT_CF_ACCESS_HS256_SECRET` is set, Agenfact will use this secret to verify JWTs instead of fetching JWKS from Cloudflare.
 
 **Example Configuration (.env):**
 
@@ -189,30 +238,11 @@ curl -X POST \
   "http://localhost:8000/uploads" -i
 ```
 
-2.  **Access the file** using a generated HS256 token (you can use [jwt.io](https://jwt.io) to generate one with `my-local-secret`):
+2.  **Access the file** using a generated HS256 token:
 
 ```bash
-# Token payload should include:
-# {
-#   "iss": "https://issuer.example.com",
-#   "aud": "agenfact-app",              // Can also be an array: ["agenfact-app"]
-#   "sub": "user-123",
-#   "email": "tester@example.com",
-#   "exp": <future_timestamp>
-# }
-
-curl -H "Cf-Access-Jwt-Assertion: *** \
+curl -H "Cf-Access-Jwt-Assertion: <your-jwt-token>" \
   "http://localhost:8000/private-files/<generated-id>.txt" -i
-```
-
-**Note:** The `aud` (audience) field can be either a string or an array. Cloudflare Access typically sends it as an array `["audience-id"]`. Both formats are supported.
-
-### Example `.env` (production baseline)
-
-```bash
-AGENFACT_CF_ACCESS_ISSUER=https://<team>.cloudflareaccess.com
-AGENFACT_CF_ACCESS_AUD=<your-access-audience>
-AGENFACT_CF_ACCESS_JWKS_URL=https://<team>.cloudflareaccess.com/cdn-cgi/access/certs
 ```
 
 ## API
@@ -235,32 +265,15 @@ Upload a file with generated ID-based filename.
 | `file`              |    ✅    | File   | File payload                                                                                                                |
 | `authorized_emails` |    ❌    | String | Comma-separated list of emails allowed to access this file. Presence of this field automatically marks the file as private. |
 
-Unknown or duplicate form fields are rejected. The complete raw multipart body, including field headers and boundaries, is size-limited and must finish within 120 seconds.
-
-**Note on file extensions:**
-
-The server determines file extension in the following order:
-
-1. **Content-Type from multipart field** (recommended) - explicitly specify using `curl -F` syntax
-2. **Original filename extension** - fallback if Content-Type is missing or generic
-
 Response:
 
 - `201 Created`
 - `Location` header: `/files/<generated-name>`
 - JSON body: `{ "message": "file uploaded successfully", "expires_at": <unix-seconds> }`
 
-`expires_at` is the authoritative expiration calculated by the server and should be used instead of deriving an expiration from the client clock.
-
 **Example (Public):**
 
 ```bash
-# Recommended: explicitly set Content-Type to ensure correct extension
-curl -X POST \
-  --form 'file=@sample.txt;type=text/plain' \
-  "http://localhost:8000/uploads?expire=1h" -i
-
-# Alternative: using -F (shorter syntax, same result)
 curl -X POST -F "file=@sample.txt;type=text/plain" \
   "http://localhost:8000/uploads?expire=1h" -i
 ```
@@ -274,8 +287,6 @@ curl -X POST \
   "http://localhost:8000/uploads" -i
 ```
 
-**Reference:** See [this article](https://ryanseddon.com/hacking/content-type-formdata-curl/) for detailed `curl` Content-Type syntax.
-
 ### `GET /files/:path`
 
 Download file content from uploads path.
@@ -284,72 +295,31 @@ Download file content from uploads path.
 - `302 Found` to `/private-files/:path` if file is marked private
 - `404 Not Found` if missing
 
-Example:
-
-```bash
-curl -i http://localhost:8000/files/sample.txt
-```
-
 ### `GET /private-files/:path`
 
 Read private file content.
 
-- Requires request header: `Cf-Access-Jwt-Assertion` or `Authorization: Bearer ***
+- Requires request header: `Cf-Access-Jwt-Assertion` or `Authorization: Bearer <jwt-token>`
 - Validates JWT signature/issuer/audience/expiry
-- The `aud` field can be either a string or an array (Cloudflare Access sends it as array)
 - Checks per-file email authorization list
 
 Response:
 
 - `200 OK` when authorized
-- `401 Unauthorized` on missing/invalid token (signature/issuer/audience/expiry)
+- `401 Unauthorized` on missing/invalid token
 - `403 Forbidden` on valid token but email not in file's authorized list
-
-Example:
-
-```bash
-curl -H "Cf-Access-Jwt-Assertion: *** http://localhost:8000/private-files/secret.txt
-```
 
 ### `POST /files/:path`
 
-Create file at explicit path.
-
-- `201 Created` on success
-- `409 Conflict` if already exists
-
-Example:
-
-```bash
-curl -X POST -F "file=@sample.txt" "http://localhost:8000/files/docs/sample.txt"
-```
+Create file at explicit path (`201 Created`, `409 Conflict` if exists).
 
 ### `PUT /files/:path`
 
-Create or overwrite file at explicit path.
-
-- `201 Created` if new
-- `200 OK` if overwritten
-
-Example:
-
-```bash
-curl -X PUT -F "file=@sample.txt" "http://localhost:8000/files/docs/sample.txt"
-```
+Create or overwrite file at explicit path (`201 Created` if new, `200 OK` if overwritten).
 
 ### `DELETE /files/:path`
 
-Delete file at explicit path.
-
-- `200 OK` on success
-- `404 Not Found` if missing
-- `400 Bad Request` if path is a directory
-
-Example:
-
-```bash
-curl -X DELETE "http://localhost:8000/files/docs/sample.txt"
-```
+Delete file at explicit path (`200 OK` on success, `404 Not Found` if missing).
 
 ## Development
 
@@ -368,14 +338,26 @@ cargo test
 ```bash
 cd web
 
-# Install dependencies (requires pnpm)
+# Install dependencies
 pnpm install
 
-# Development server with hot reload
+# Dev server with hot reload
 pnpm dev
 
 # Production build
 pnpm run build
+
+# Unit test & check
+pnpm test
+pnpm run check
+```
+
+### One-Time CouchDB Migration
+
+To migrate local storage and JSON indices into CouchDB:
+
+```bash
+python3 scripts/migrate_to_couchdb.py --couchdb-url http://localhost:5984 --couchdb-db agenfact
 ```
 
 ### Project Structure
@@ -390,56 +372,31 @@ agenfact/
 │   ├── uploads.rs         # Random filename generation, multipart uploads
 │   ├── expiry.rs          # Background sweeper for file expiration
 │   ├── private_index.rs   # Private file metadata (authorized emails)
-│   └── test_utils.rs      # Test helpers
+│   ├── couchdb.rs         # CouchDB persistence & sweeper
+│   └── upload_protection.rs # Turnstile challenge & rate limiter
 ├── web/                   # Svelte frontend
 │   ├── src/
 │   │   ├── App.svelte     # Main upload UI
-│   │   └── components/    # UI components (FileUploadZone, DownloadLink)
+│   │   └── components/    # UI components
 │   ├── package.json
 │   ├── svelte.config.js
 │   └── vite.config.ts
-├── data/                  # Runtime data (created at runtime)
-│   ├── expiry-index.json  # File expiration tracking
-│   └── private-files.json # Private file authorization
-├── uploads/               # Uploaded files (created at runtime)
-├── .gitea/workflows/      # CI/CD pipelines
-│   ├── rust.yml           # Rust test + Trivy scan
-│   └── docker.yml         # Docker build + push
-└── Dockerfile             # Multi-stage build (pnpm + Rust)
+├── scripts/               # Helper & migration scripts
+│   └── migrate_to_couchdb.py # One-time CouchDB migration script
+├── skills/                # Agent Skills
+│   └── agenfact/          # Agenfact skill for AI agents
+├── docker-compose.yml     # Docker Compose for app + CouchDB
+├── Dockerfile             # Multi-stage build (Node/pnpm + Rust)
+└── Cargo.toml             # Dependencies & package metadata
 ```
 
 ## CI/CD
 
-The project uses Gitea Actions for CI/CD.
-
-### Workflows
+Uses Gitea Actions for automated workflows:
 
 | Workflow | Trigger | Description |
 |----------|---------|-------------|
 | `rust.yml` | Push/PR to `main`, tags `*.*.*` | Build, test, Trivy vulnerability scan |
 | `docker.yml` | Push/PR to `main`, tags `*.*.*` | Docker build, Trivy image scan, push to registry |
 
-### Registry
-
-Docker images are pushed to: `registry-gitea.home-infra.weii.cloud/home-infra/agenfact`
-
-## Rollout checklist (dev → staging → production)
-
-1. Configure environment variables (`AGENFACT_CF_ACCESS_*`) and restart service.
-2. Verify public flow:
-   - `GET /files/<public-file>` returns `200`
-3. Verify private redirect flow:
-   - `GET /files/<private-file>` returns `302` with `Location: /private-files/<private-file>`
-4. Verify auth failures:
-   - no `Cf-Access-Jwt-Assertion` header on `/private-files/...` returns `401`
-   - invalid token returns `401`
-   - valid token but email not in the file's `authorized_emails` list returns `403`
-5. Verify authorized access:
-   - valid token + email matches the list returns `200`
-6. Check logs for deny audit entries (code/status/path/method) and ensure no token leakage.
-
-## Notes
-
-- Local persistent data files:
-  - `data/expiry-index.json`
-  - `data/private-files.json`
+Registry: `registry-gitea.home-infra.weii.cloud/home-infra/agenfact`
