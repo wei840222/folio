@@ -402,3 +402,68 @@ fn base64_simple(input: &str) -> String {
     }
     out
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::config::Agenfact;
+
+    #[test]
+    fn test_urlencoding_simple() {
+        assert_eq!(urlencoding_simple("hello/world"), "hello/world");
+        assert_eq!(urlencoding_simple("a b/c@d"), "a%20b/c%40d");
+        assert_eq!(urlencoding_simple("agenfact_db"), "agenfact_db");
+    }
+
+    #[test]
+    fn test_base64_simple() {
+        assert_eq!(base64_simple("admin:password"), "YWRtaW46cGFzc3dvcmQ=");
+        assert_eq!(base64_simple("foo"), "Zm9v");
+        assert_eq!(base64_simple("foobar"), "Zm9vYmFy");
+    }
+
+    #[test]
+    fn test_couchdb_store_new_without_url() {
+        let config = Agenfact::default();
+        assert!(CouchDbStore::new(&config).is_none());
+    }
+
+    #[test]
+    fn test_couchdb_store_new_with_url() {
+        let config = Agenfact {
+            couchdb_url: Some("http://localhost:5984".to_string()),
+            couchdb_db: "agenfact".to_string(),
+            couchdb_user: Some("admin".to_string()),
+            couchdb_password: Some("password".to_string()),
+            ..Agenfact::default()
+        };
+        let store = CouchDbStore::new(&config);
+        assert!(store.is_some());
+        let store = store.unwrap();
+        assert_eq!(store.db_url, "http://localhost:5984/agenfact");
+    }
+
+    #[test]
+    fn test_couch_doc_serde() {
+        let doc = CouchDoc {
+            id: "file123".to_string(),
+            rev: Some("1-abc".to_string()),
+            path: "report.pdf".to_string(),
+            size_bytes: 1024,
+            content_type: "application/pdf".to_string(),
+            is_private: true,
+            authorized_emails: vec!["user@example.com".to_string()],
+            expire_at_unix: Some(1_700_000_000),
+            owner: Some("owner1".to_string()),
+        };
+        let json = serde_json::to_string(&doc).unwrap();
+        assert!(json.contains("\"_id\":\"file123\""));
+        assert!(json.contains("\"_rev\":\"1-abc\""));
+        assert!(json.contains("\"is_private\":true"));
+
+        let deserialized: CouchDoc = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized.id, "file123");
+        assert_eq!(deserialized.authorized_emails, vec!["user@example.com"]);
+    }
+}
+
