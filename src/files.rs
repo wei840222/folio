@@ -204,26 +204,9 @@ async fn open_upload_file(
             context: Some(format!("open file: {}", path)),
         })?;
 
-    let is_active_content = matches!(
-        file.content_type().essence_str(),
-        "text/html"
-            | "application/xhtml+xml"
-            | "image/svg+xml"
-            | "application/javascript"
-            | "text/javascript"
-            | "text/xml"
-            | "application/xml"
-    );
-
-    let disposition = if is_active_content {
-        DispositionType::Attachment
-    } else {
-        DispositionType::Inline
-    };
-
     let mut response = file
         .set_content_disposition(ContentDisposition {
-            disposition,
+            disposition: DispositionType::Inline,
             parameters: Vec::new(),
         })
         .into_response(request);
