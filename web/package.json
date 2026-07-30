@@ -1,5 +1,5 @@
 {
-  "name": "folio-web",
+  "name": "agenfact",
   "private": true,
   "version": "0.0.0",
   "type": "module",
@@ -10,7 +10,6 @@
     "check": "svelte-check --tsconfig ./tsconfig.app.json",
     "test": "node --experimental-strip-types --test tests/*.test.ts"
   },
-
   "dependencies": {
     "@lucide/svelte": "^1.21.0"
   },

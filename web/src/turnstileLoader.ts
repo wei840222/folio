@@ -1,4 +1,4 @@
-const TURNSTILE_SCRIPT_ID = 'folio-turnstile-script';
+const TURNSTILE_SCRIPT_ID = 'agenfact-turnstile-script';
 const TURNSTILE_SCRIPT_URL = 'https://challenges.cloudflare.com/turnstile/v0/api.js';
 const DEFAULT_TIMEOUT_MS = 10_000;
 

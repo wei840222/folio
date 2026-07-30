@@ -216,7 +216,7 @@
 </script>
 
 <svelte:head>
-  <title>Folio — Cyber Artifact Portfolio</title>
+  <title>Agenfact — Cyber Artifact Portfolio</title>
 </svelte:head>
 
 <main class="min-h-screen silicon-bg text-text selection:bg-cyber-cyan selection:text-on-primary">
@@ -229,12 +229,12 @@
         </div>
         <div>
           <div class="flex items-center gap-2">
-            <p class="folio-display text-xl font-extrabold tracking-wider text-text">FOLIO</p>
+            <p class="agenfact-display text-xl font-extrabold tracking-wider text-text">AGENFACT</p>
             <span class="font-mono text-[10px] px-2 py-0.5 rounded bg-cyber-cyan/10 text-cyber-cyan border border-cyber-cyan/30 uppercase">
               Agent Edition
             </span>
           </div>
-          <p class="folio-label text-[10px] font-semibold uppercase text-text-secondary tracking-widest">
+          <p class="agenfact-label text-[10px] font-semibold uppercase text-text-secondary tracking-widest">
             DIGITAL ARTIFACT PORTFOLIO
           </p>
         </div>
@@ -262,7 +262,7 @@
         </div>
 
         <div class="space-y-5">
-          <h1 class="folio-display max-w-3xl text-4xl font-extrabold leading-[1.1] text-text sm:text-5xl lg:text-6xl tracking-tight">
+          <h1 class="agenfact-display max-w-3xl text-4xl font-extrabold leading-[1.1] text-text sm:text-5xl lg:text-6xl tracking-tight">
             Drop your <span class="text-neon-cyan">Artifacts</span>.<br />
             Shared on your terms.
           </h1>
@@ -295,11 +295,11 @@
         <div class="mb-6 flex items-center justify-between border-b border-border/40 pb-4">
           <div class="flex items-center gap-2">
             <Terminal class="h-5 w-5 text-cyber-cyan" />
-            <h2 id="upload-title" class="folio-display text-xl font-bold text-text uppercase tracking-wider">
+            <h2 id="upload-title" class="agenfact-display text-xl font-bold text-text uppercase tracking-wider">
               UPLINK CORE
             </h2>
           </div>
-          <span class="folio-label rounded-full border border-cyber-cyan/40 bg-cyber-cyan/10 px-3 py-1 text-[10px] font-bold uppercase text-cyber-cyan">
+          <span class="agenfact-label rounded-full border border-cyber-cyan/40 bg-cyber-cyan/10 px-3 py-1 text-[10px] font-bold uppercase text-cyber-cyan">
             READY
           </span>
         </div>
@@ -385,7 +385,7 @@
     <footer class="mt-auto py-6 border-t border-border/20 text-center font-mono text-xs text-text-muted flex flex-col sm:flex-row items-center justify-between gap-4">
       <div class="flex items-center gap-2">
         <Cpu class="h-4 w-4 text-cyber-cyan" />
-        <span>FOLIO — SECURE DIGITAL ARTIFACT PORTFOLIO</span>
+        <span>AGENFACT — SECURE DIGITAL ARTIFACT PORTFOLIO</span>
       </div>
       <div>
         <span>POWERED BY RUST 2024 & SVELTE 5</span>

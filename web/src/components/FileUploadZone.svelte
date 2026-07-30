@@ -52,8 +52,8 @@
       <RefreshCw class="h-8 w-8 animate-spin text-cyber-cyan" />
     </div>
     <div>
-      <h3 class="font-mono text-base font-bold text-text uppercase tracking-wider">FOLIO UPLINK IN PROGRESS...</h3>
-      <p class="mt-1 font-mono text-xs text-text-secondary">正在寫入 Folio 成果典藏庫，請稍候。</p>
+      <h3 class="font-mono text-base font-bold text-text uppercase tracking-wider">AGENFACT UPLINK IN PROGRESS...</h3>
+      <p class="mt-1 font-mono text-xs text-text-secondary">正在寫入 Agenfact 成果典藏庫，請稍候。</p>
     </div>
     <div class="w-full bg-background/80 rounded-full h-1.5 overflow-hidden border border-cyber-cyan/20">
       <div class="bg-gradient-to-r from-cyber-cyan via-cyber-purple to-cyber-emerald h-full animate-pulse w-full"></div>
@@ -67,7 +67,7 @@
     ondragleave={handleDragLeave}
     ondrop={handleDrop}
     onclick={openFilePicker}
-    aria-label="Folio 檔案典藏上傳區域，點擊或拖曳檔案到此處"
+    aria-label="Agenfact 檔案典藏上傳區域，點擊或拖曳檔案到此處"
   >
     <!-- Laser line effect when hovered or dragover -->
     <div class="laser-line opacity-0 group-hover:opacity-100 transition-opacity"></div>
@@ -82,7 +82,7 @@
       <div>
         <div class="inline-flex items-center gap-1.5 mb-2 px-2.5 py-0.5 rounded-full bg-cyber-cyan/10 border border-cyber-cyan/30 text-[10px] font-mono text-cyber-cyan uppercase">
           <Cpu class="h-3 w-3" />
-          FOLIO ARTIFACT UPLINK
+          AGENT ARTIFACT UPLOAD
         </div>
         <h3 class="font-mono text-lg font-bold text-text group-hover:text-cyber-cyan transition">
           拖曳檔案至此區域上傳

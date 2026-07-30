@@ -29,7 +29,7 @@
   function downloadQr() {
     const a = document.createElement('a');
     a.href = qrImgUrl;
-    a.download = `folio-qr-${Date.now()}.png`;
+    a.download = `agenfact-qr-${Date.now()}.png`;
     a.target = '_blank';
     a.click();
   }
