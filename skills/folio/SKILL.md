@@ -77,7 +77,8 @@ ALWAYS format the upload confirmation as follows:
 ```markdown
 ### ✅ File Uploaded Successfully
 
-- **URL**: (the first line printed by `scripts/upload.py`, resolved only from the response `Location` header)
+- **URL**: (the first line printed by `scripts/upload.py`, resolved from the response `Location` header)
+- **Preview URL**: (the `Preview URL:` line printed by `scripts/upload.py`)
 - **Visibility**: (Public | Private)
 - **Expires**: (the `Expires:` timestamp printed by `scripts/upload.py`; do not invent one)
 - **Access Control**: (authorized_emails | None)

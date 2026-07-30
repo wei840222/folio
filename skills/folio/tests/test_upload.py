@@ -87,8 +87,9 @@ class UploadScriptTests(unittest.TestCase):
 
         output_lines = stdout.getvalue().strip().splitlines()
         self.assertEqual(output_lines[0], "https://example.test/files/random.pdf")
+        self.assertEqual(output_lines[1], "Preview URL: https://example.test/?preview=/files/random.pdf")
         self.assertEqual(
-            output_lines[1],
+            output_lines[2],
             f"Expires: {upload.expiration_timestamp(1_900_000_000)}",
         )
         self.assertEqual(post.call_args.kwargs["params"], {"expire": "7d"})
@@ -161,7 +162,11 @@ class UploadScriptTests(unittest.TestCase):
 
         self.assertEqual(
             stdout.getvalue().strip().splitlines(),
-            ["https://example.test/files/random.pdf", "Expires: unavailable"],
+            [
+                "https://example.test/files/random.pdf",
+                "Preview URL: https://example.test/?preview=/files/random.pdf",
+                "Expires: unavailable",
+            ],
         )
 
     def test_non_success_response_is_failure(self):

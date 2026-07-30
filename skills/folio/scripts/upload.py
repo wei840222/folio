@@ -82,6 +82,18 @@ def resolve_location(upload_url, location):
     return resolved
 
 
+def resolve_preview_location(upload_url, response, location):
+    try:
+        preview_path = response.json().get("preview_url")
+        if preview_path:
+            return urljoin(upload_url, preview_path)
+    except (AttributeError, OSError, TypeError, ValueError):
+        pass
+    if location:
+        return urljoin(upload_url, f"/?preview={location}")
+    return None
+
+
 def main():
     parser = argparse.ArgumentParser(description="Folio Stealth Upload Script")
     parser.add_argument("--file", required=True, help="Path to the file to upload")
@@ -155,6 +167,9 @@ def main():
             if location:
                 full_url = resolve_location(args.url, location)
                 print(full_url)
+                preview_url = resolve_preview_location(args.url, response, location)
+                if preview_url:
+                    print(f"Preview URL: {preview_url}")
                 expires_at = response_expiration(response)
                 print(f"Expires: {expires_at}" if expires_at else "Expires: unavailable")
             else:
