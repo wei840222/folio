@@ -216,7 +216,7 @@
 </script>
 
 <svelte:head>
-  <title>Agenfact — Cyber Artifact Portfolio</title>
+  <title>Agenfact — ARTIFACTS OF AI AGENTS</title>
 </svelte:head>
 
 <main class="min-h-screen silicon-bg text-text selection:bg-cyber-cyan selection:text-on-primary">
@@ -231,11 +231,11 @@
           <div class="flex items-center gap-2">
             <p class="agenfact-display text-xl font-extrabold tracking-wider text-text">AGENFACT</p>
             <span class="font-mono text-[10px] px-2 py-0.5 rounded bg-cyber-cyan/10 text-cyber-cyan border border-cyber-cyan/30 uppercase">
-              Agent Edition
+              Cyber Edition
             </span>
           </div>
           <p class="agenfact-label text-[10px] font-semibold uppercase text-text-secondary tracking-widest">
-            DIGITAL ARTIFACT PORTFOLIO
+            ARTIFACTS OF AI AGENTS
           </p>
         </div>
       </div>
@@ -258,7 +258,7 @@
       <div class="space-y-8">
         <div class="inline-flex items-center gap-2.5 rounded-full border border-cyber-cyan/30 bg-cyber-cyan/10 px-4 py-2 text-xs font-mono font-bold text-cyber-cyan shadow-[0_0_20px_rgba(0,242,254,0.15)]">
           <Sparkles class="h-4 w-4 text-cyber-cyan" />
-          檔案典藏冊 · AI ARTIFACT 託管 · 私密授權傳輸
+          簡單取用 · AI Agent 的製品託管 · 私密授權分享
         </div>
 
         <div class="space-y-5">
@@ -385,10 +385,10 @@
     <footer class="mt-auto py-6 border-t border-border/20 text-center font-mono text-xs text-text-muted flex flex-col sm:flex-row items-center justify-between gap-4">
       <div class="flex items-center gap-2">
         <Cpu class="h-4 w-4 text-cyber-cyan" />
-        <span>AGENFACT — SECURE DIGITAL ARTIFACT PORTFOLIO</span>
+        <span>AGENFACT — SECURE ARTIFACTS OF AI AGENTS</span>
       </div>
       <div>
-        <span>POWERED BY RUST 2024 & SVELTE 5</span>
+        <span>Powered by Actix Web & Svelte</span>
       </div>
     </footer>
   </div>
