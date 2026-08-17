@@ -204,12 +204,27 @@ async fn open_upload_file(
             context: Some(format!("open file: {}", path)),
         })?;
 
+    let content_type = file.content_type().to_string();
+
     let mut response = file
         .set_content_disposition(ContentDisposition {
             disposition: DispositionType::Inline,
             parameters: Vec::new(),
         })
         .into_response(request);
+
+    // Ensure text-based files include charset=utf-8 so browsers decode
+    // UTF-8 content correctly (e.g. Chinese / CJK in Markdown files).
+    if content_type.starts_with("text/") && !content_type.contains("charset=") {
+        let ct_with_charset = format!("{}; charset=utf-8", content_type);
+        if let Ok(val) = HeaderValue::from_str(&ct_with_charset) {
+            response.headers_mut().insert(
+                actix_web::http::header::CONTENT_TYPE,
+                val,
+            );
+        }
+    }
+
     response.headers_mut().insert(
         HeaderName::from_static("x-content-type-options"),
         HeaderValue::from_static("nosniff"),
